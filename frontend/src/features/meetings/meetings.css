@@ -1,0 +1,388 @@
+/* Meetings: date tiles, meeting rows, schedule rows, the day picker and the meeting page. BLUE tokens only. */
+
+.card-head {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+/* A small calendar page. */
+.date-tile {
+  flex: none;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  width: 48px;
+  height: 56px;
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-md);
+  background: var(--blue-color-surface-default);
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+.date-tile__weekday,
+.date-tile__month {
+  font-size: 12px;
+  font-weight: var(--blue-font-weight-semibold);
+  letter-spacing: 0.04em;
+  color: var(--blue-color-text-secondary);
+}
+.date-tile__weekday {
+  color: var(--blue-color-brand-primary-active);
+}
+.date-tile__day {
+  font-size: var(--blue-font-size-lg);
+  font-weight: var(--blue-font-weight-bold);
+}
+.date-tile--today {
+  border-color: transparent;
+  background: var(--app-gradient-brand);
+  color: var(--blue-color-text-on-brand);
+  box-shadow: var(--app-brand-shadow);
+}
+.date-tile--today .date-tile__weekday,
+.date-tile--today .date-tile__month {
+  color: var(--blue-color-text-on-brand);
+}
+.date-tile--past {
+  background: var(--blue-color-surface-subtle);
+}
+.date-tile--past .date-tile__weekday {
+  color: var(--blue-color-text-secondary);
+}
+.date-tile--lg {
+  width: 64px;
+  height: 72px;
+  border-radius: var(--blue-radius-lg);
+}
+.date-tile--lg .date-tile__day {
+  font-size: var(--blue-font-size-2xl);
+}
+
+/* Meeting lists. */
+.meeting-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.meeting-list li + li {
+  border-top: 1px solid var(--blue-color-border-default);
+}
+.meeting-row {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-3);
+  padding: var(--blue-space-2) var(--blue-space-2);
+  margin: 0 calc(-1 * var(--blue-space-2));
+  border-radius: var(--blue-radius-md);
+  color: inherit;
+  text-decoration: none;
+  transition: background-color var(--app-duration-fast) var(--app-ease);
+}
+a.meeting-row:hover {
+  background: var(--blue-color-surface-subtle);
+}
+a.meeting-row:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 1px;
+}
+.meeting-row__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.meeting-row__title {
+  font-weight: var(--blue-font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+.meeting-row__arrow {
+  color: var(--blue-color-text-secondary);
+  transition:
+    transform var(--app-duration) var(--app-ease),
+    color var(--app-duration) var(--app-ease);
+}
+a.meeting-row:hover .meeting-row__arrow {
+  color: var(--blue-color-brand-primary-active);
+  transform: translateX(3px);
+}
+.meeting-row--cancelled .meeting-row__title {
+  color: var(--blue-color-text-secondary);
+  text-decoration: line-through;
+}
+.meeting-row--cancelled .date-tile {
+  background: var(--blue-color-surface-muted);
+}
+.meeting-row--skeleton {
+  margin: 0;
+  padding: var(--blue-space-2) 0;
+}
+.meeting-list__foot {
+  margin-top: var(--blue-space-3);
+  text-align: center;
+}
+
+/* Schedules. */
+.series-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.series-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--blue-space-3);
+  padding: var(--blue-space-2) 0;
+}
+.series-list > li + li {
+  border-top: 1px solid var(--blue-color-border-default);
+}
+.series-row__text {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.series-row__name {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--blue-space-2);
+  font-weight: var(--blue-font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+.series-row__actions {
+  display: flex;
+  gap: var(--blue-space-2);
+}
+.series-row--stopped .series-row__name {
+  color: var(--blue-color-text-secondary);
+}
+
+/* The day picker: seven toggles. */
+.day-picker {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--blue-space-1);
+}
+.day-picker__day {
+  padding: var(--blue-space-2) 0;
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-md);
+  background: var(--blue-color-surface-default);
+  color: var(--blue-color-text-primary);
+  font: inherit;
+  font-weight: var(--blue-font-weight-semibold);
+  cursor: pointer;
+  transition:
+    background-color var(--app-duration) var(--app-ease),
+    border-color var(--app-duration) var(--app-ease),
+    color var(--app-duration) var(--app-ease),
+    transform var(--app-duration-fast) var(--app-ease);
+}
+.day-picker__day:hover {
+  border-color: var(--blue-color-brand-primary);
+}
+.day-picker__day:active {
+  transform: scale(0.96);
+}
+.day-picker__day:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+}
+.day-picker__day--on {
+  border-color: transparent;
+  background: var(--app-gradient-brand);
+  color: var(--blue-color-text-on-brand);
+  box-shadow: var(--app-brand-shadow);
+}
+
+/* The live preview under the day picker. */
+.schedule-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-1);
+  padding: var(--blue-space-3) var(--blue-space-4);
+  border-radius: var(--blue-radius-md);
+  background: var(--blue-color-blue-50);
+}
+.schedule-preview__label {
+  margin-top: var(--blue-space-1);
+}
+.schedule-preview__dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--blue-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.schedule-preview__dates li {
+  padding: 2px var(--blue-space-2);
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-surface-default);
+  color: var(--blue-color-brand-primary-active);
+  font-weight: var(--blue-font-weight-semibold);
+  font-size: var(--blue-font-size-xs);
+  animation: app-rise var(--app-duration) var(--app-ease) backwards;
+}
+.schedule-preview__dates .schedule-preview__date--today {
+  background: var(--blue-color-brand-primary-active);
+  color: var(--blue-color-text-on-brand);
+}
+
+.modal-footer-start {
+  display: flex;
+  gap: var(--blue-space-1);
+  margin-right: auto;
+}
+
+/* The meeting page. */
+/* The back link on the left, the previous and next meeting on the right (below it on a narrow phone). */
+.meeting-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--blue-space-2) var(--blue-space-3);
+  margin-bottom: var(--blue-space-4);
+}
+.meeting-topbar .back-link {
+  margin-bottom: 0;
+}
+.meeting-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--blue-space-2);
+}
+.meeting-switcher__jump {
+  min-width: 0;
+}
+/* On a phone: one full-width row, the list in the middle taking what is left. */
+@media (max-width: 600px) {
+  .meeting-switcher {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    width: 100%;
+  }
+  .meeting-switcher__jump .blue-select__field {
+    width: 100%;
+  }
+  .meeting-switcher__word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+.meeting-head {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-4);
+  min-width: 0;
+}
+.meeting-head__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-1);
+  min-width: 0;
+}
+.meeting-head__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--blue-space-2);
+}
+.meeting-head__actions {
+  flex-wrap: wrap;
+}
+.meeting-head__meta a {
+  color: var(--blue-color-brand-primary-active);
+  font-weight: var(--blue-font-weight-semibold);
+}
+
+@media (max-width: 600px) {
+  .day-picker__day {
+    font-size: var(--blue-font-size-xs);
+  }
+}
+
+/* The Meetings page. */
+.meetings-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--blue-space-3);
+}
+.meetings-toolbar__team {
+  min-width: 200px;
+}
+.meeting-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-3);
+}
+.meeting-section + .meeting-section {
+  margin-top: var(--blue-space-4);
+}
+.meeting-section__title {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-2);
+  font-size: var(--blue-font-size-sm);
+  font-weight: var(--blue-font-weight-bold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--blue-color-text-secondary);
+}
+.meeting-section__count {
+  min-width: 22px;
+  padding: 0 var(--blue-space-2);
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-surface-muted);
+  font-size: var(--blue-font-size-xs);
+  text-align: center;
+  letter-spacing: 0;
+}
+a.blue-button {
+  text-decoration: none;
+}
+
+/* The meeting's quarter (or other period), a link to its page. */
+.period-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--blue-space-2);
+  border: 1px solid color-mix(in srgb, var(--blue-color-brand-primary) 35%, var(--blue-color-border-default));
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-blue-50);
+  color: var(--blue-color-brand-primary-active);
+  font-size: var(--blue-font-size-xs);
+  font-weight: var(--blue-font-weight-semibold);
+  line-height: 20px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.period-chip:hover {
+  border-color: var(--blue-color-brand-primary);
+}
+.period-chip:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+}
+.period-chip--ended,
+.period-chip--upcoming {
+  border-color: var(--blue-color-border-default);
+  background: var(--blue-color-surface-muted);
+  color: var(--blue-color-text-secondary);
+}
+.period-chip__state {
+  font-weight: var(--blue-font-weight-regular);
+}

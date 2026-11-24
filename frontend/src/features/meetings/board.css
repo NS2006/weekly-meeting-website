@@ -1,0 +1,656 @@
+/* The meeting's board of notes: a group per person in a grid read left to right, a card per note (BLUE tokens only). */
+
+.board-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-3);
+}
+.board-section__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--blue-space-3);
+}
+.board-section__title {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-2);
+  margin: 0;
+  font-size: var(--blue-font-size-lg);
+}
+.board-section__count {
+  min-width: 24px;
+  padding: 0 var(--blue-space-2);
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-surface-muted);
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-sm);
+  text-align: center;
+}
+.board-section__hint {
+  margin: var(--blue-space-1) 0 0;
+  font-size: var(--blue-font-size-sm);
+}
+
+/*
+ * One group per person in three columns (two on narrower screens, one on phones), in the speaking order: left to
+ * right, then the next row. The page scrolls down, never sideways.
+ */
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--blue-space-3);
+  padding-bottom: var(--blue-space-4);
+}
+.board-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-2);
+  padding: var(--blue-space-3);
+  border-radius: var(--blue-radius-lg);
+  background: var(--blue-color-surface-muted);
+}
+.board-column--me {
+  background: var(--blue-color-blue-50);
+  box-shadow: inset 0 0 0 1px var(--blue-color-blue-100);
+}
+.board-column__head {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-2);
+  min-height: 32px;
+}
+.board-column__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--blue-font-weight-semibold);
+}
+.board-column__you {
+  color: var(--blue-color-text-secondary);
+  font-weight: var(--blue-font-weight-regular);
+}
+.board-column__count {
+  flex: none;
+  padding: 0 var(--blue-space-2);
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-surface-default);
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+  text-align: center;
+}
+.board-column__flags {
+  flex: none;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--blue-space-1);
+}
+.board-column__cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-2);
+}
+.board-column__add {
+  padding: var(--blue-space-2);
+  border: none;
+  border-radius: var(--blue-radius-md);
+  background: transparent;
+  color: var(--blue-color-text-secondary);
+  font: inherit;
+  font-weight: var(--blue-font-weight-semibold);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--app-duration-fast) var(--app-ease);
+}
+.board-column__add:hover {
+  background: color-mix(in srgb, var(--blue-color-neutral-900) 6%, transparent);
+  color: var(--blue-color-text-primary);
+}
+.board-column__add:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 1px;
+}
+
+/* Arranging the board: the leader holds a name bar, a writer holds a card, and drags it (hooks/useDragSort.ts). */
+[data-sortable='true'] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.board-column__head[data-sortable='true'] {
+  margin: calc(-1 * var(--blue-space-1));
+  padding: var(--blue-space-1);
+  border-radius: var(--blue-radius-md);
+  cursor: grab;
+  transition: background-color var(--app-duration-fast) var(--app-ease);
+}
+.board-column__head[data-sortable='true']:hover {
+  background: color-mix(in srgb, var(--blue-color-neutral-900) 5%, transparent);
+}
+.board-column__head[data-sortable='true']:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 1px;
+}
+.board-column__grip {
+  flex: none;
+  color: var(--blue-color-text-secondary);
+}
+.board-column[data-dragging='true'] {
+  box-shadow: var(--blue-shadow-lg);
+}
+.board-card-slot[data-dragging='true'] .board-card {
+  border-color: var(--blue-color-blue-500);
+  box-shadow: var(--blue-shadow-lg);
+}
+.board-card__cover img {
+  -webkit-user-drag: none;
+}
+body.is-sorting,
+body.is-sorting * {
+  cursor: grabbing !important;
+}
+.board-section__arrange {
+  margin-top: 0;
+}
+
+/* Each card sits in a slot (what moves while dragging); the card fills it. */
+.board-card-slot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* A card: the first picture on top, then the text (a row with a small picture on phones). */
+.board-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-md);
+  background: var(--blue-color-surface-default);
+  box-shadow: var(--blue-shadow-sm);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    box-shadow var(--app-duration) var(--app-ease),
+    transform var(--app-duration) var(--app-ease),
+    border-color var(--app-duration) var(--app-ease);
+}
+.board-card:hover {
+  border-color: var(--blue-color-blue-100);
+  box-shadow: var(--blue-shadow-md);
+  transform: translateY(-1px);
+}
+.board-card:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+}
+.board-card--skeleton {
+  gap: var(--blue-space-2);
+  padding: var(--blue-space-3);
+  cursor: default;
+}
+.board-card__cover {
+  position: relative;
+  flex: none;
+  height: 132px;
+  border-bottom: 1px solid var(--blue-color-border-default);
+  background: var(--blue-color-surface-subtle);
+}
+.board-card__cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+.board-card__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-2);
+  padding: var(--blue-space-3);
+}
+.board-card__title {
+  font-weight: var(--blue-font-weight-semibold);
+  line-height: 1.35;
+}
+.board-card__title--untitled {
+  color: var(--blue-color-text-secondary);
+  font-style: italic;
+}
+.board-card__projects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--blue-space-1);
+}
+.board-card__more {
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+}
+.board-card__snippet {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-sm);
+  line-height: 1.45;
+}
+.board-card__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--blue-space-2);
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+}
+.board-card__images {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.board-empty {
+  margin: 0;
+  padding: var(--blue-space-3);
+  border: 1px dashed var(--blue-color-border-default);
+  border-radius: var(--blue-radius-md);
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-sm);
+  text-align: center;
+}
+.board-empty--mine {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-1);
+  width: 100%;
+  border-color: var(--blue-color-blue-500);
+  background: var(--blue-color-surface-default);
+  font: inherit;
+  font-size: var(--blue-font-size-sm);
+  cursor: pointer;
+  transition: background-color var(--app-duration-fast) var(--app-ease);
+}
+.board-empty--mine:hover {
+  background: var(--blue-color-blue-50);
+}
+.board-empty--mine:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+}
+.board-empty__title {
+  color: var(--blue-color-text-primary);
+  font-weight: var(--blue-font-weight-semibold);
+}
+/* No notes at all: one panel where the columns would be. */
+.board-empty--wide {
+  max-width: 560px;
+  padding: var(--blue-space-5) var(--blue-space-4);
+}
+
+/* People with no note yet: one small button under the count, opening a short list (not empty columns). */
+.board-waiting {
+  position: relative;
+  display: inline-block;
+  margin-top: var(--blue-space-2);
+}
+.board-waiting__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--blue-space-2);
+  min-height: 32px;
+  padding: 2px var(--blue-space-3);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-surface-default);
+  color: var(--blue-color-text-primary);
+  font: inherit;
+  font-size: var(--blue-font-size-sm);
+  font-weight: var(--blue-font-weight-semibold);
+  cursor: pointer;
+  transition: background-color var(--app-duration-fast) var(--app-ease);
+}
+.board-waiting__toggle:hover,
+.board-waiting__toggle[aria-expanded='true'] {
+  background: var(--blue-color-blue-50);
+}
+.board-waiting__toggle:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+}
+.board-waiting__count {
+  min-width: 22px;
+  padding: 0 var(--blue-space-2);
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-surface-muted);
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+  text-align: center;
+}
+.board-waiting__chevron {
+  color: var(--blue-color-text-secondary);
+  transition: transform var(--app-duration-fast) var(--app-ease);
+}
+.board-waiting__toggle[aria-expanded='true'] .board-waiting__chevron {
+  transform: rotate(180deg);
+}
+.board-waiting__panel {
+  position: absolute;
+  top: calc(100% + var(--blue-space-2));
+  left: 0;
+  z-index: 20;
+  width: max-content;
+  min-width: 260px;
+  max-width: calc(100vw - 2 * var(--blue-space-4));
+  max-height: min(360px, 60vh);
+  overflow-y: auto;
+  padding: var(--blue-space-2);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-lg);
+  background: var(--blue-color-surface-default);
+  box-shadow: var(--blue-shadow-lg);
+  animation: app-fade var(--app-duration-fast) var(--app-ease);
+}
+.board-waiting__title {
+  margin: 0;
+  padding: var(--blue-space-1) var(--blue-space-2) var(--blue-space-2);
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-sm);
+}
+.board-waiting__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.board-waiting__person {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-2);
+  min-height: 40px;
+  padding: var(--blue-space-1) var(--blue-space-2);
+  border-radius: var(--blue-radius-md);
+  font-size: var(--blue-font-size-sm);
+}
+.board-waiting__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.board-waiting__role {
+  padding: 0 var(--blue-space-2);
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-blue-50);
+  color: var(--blue-color-brand-primary-active);
+  font-size: var(--blue-font-size-xs);
+  font-weight: var(--blue-font-weight-semibold);
+}
+.board-waiting__add {
+  font-size: var(--blue-font-size-sm);
+}
+
+/* Reading a note (the card opened). */
+.reader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-4);
+}
+/* The author on the left, Previous / Next on the right (below it on a phone). */
+.reader__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--blue-space-2) var(--blue-space-3);
+}
+.reader__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-2);
+  font-size: var(--blue-font-size-sm);
+}
+.reader__loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-3);
+}
+/* A note with several project sections: the navigation on the left, the note on the right. */
+.reader__layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--blue-space-5);
+}
+.reader__content .note-section {
+  scroll-margin-top: var(--blue-space-4);
+}
+.reader__content .note-section:focus {
+  outline: none;
+}
+.reader__content .note-section:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+}
+/* The projects list (features/notes/ProjectNav) stays in view beside the note while the reader scrolls. */
+.reader-nav {
+  position: sticky;
+  top: var(--blue-space-4);
+  max-height: calc(100dvh - 160px);
+  overflow-y: auto;
+  padding-right: var(--blue-space-1);
+}
+/* Narrower screens: one column, the projects as a row of chips above the note. */
+@media (max-width: 900px) {
+  .reader__layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--blue-space-3);
+  }
+  .reader-nav {
+    position: static;
+    max-height: none;
+    padding: 0;
+  }
+}
+
+.reader__content .note-section__label {
+  margin-bottom: var(--blue-space-2);
+}
+.reader-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--blue-space-3);
+  width: 100%;
+}
+.reader-footer__nav,
+.reader-footer__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-2);
+}
+.reader-footer__position {
+  min-width: 56px;
+  font-size: var(--blue-font-size-sm);
+  text-align: center;
+}
+
+/* "Add my note". */
+.add-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-3);
+}
+.add-note__new {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--blue-space-3);
+  padding: var(--blue-space-3) var(--blue-space-4);
+  border-radius: var(--blue-radius-md);
+  background: var(--blue-color-blue-50);
+}
+.add-note__new p {
+  margin: var(--blue-space-1) 0 0;
+  font-size: var(--blue-font-size-sm);
+}
+.add-note__divider {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-3);
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-sm);
+}
+.add-note__divider::before,
+.add-note__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--blue-color-border-default);
+}
+.add-note__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-2);
+  max-height: 46vh;
+  margin: 0;
+  padding: var(--blue-space-1);
+  overflow-y: auto;
+  list-style: none;
+}
+.add-note__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-1);
+  width: 100%;
+  padding: var(--blue-space-3);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-md);
+  background: var(--blue-color-surface-default);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--app-duration-fast) var(--app-ease),
+    background-color var(--app-duration-fast) var(--app-ease);
+}
+.add-note__row:hover:not(:disabled) {
+  border-color: var(--blue-color-blue-500);
+  background: var(--blue-color-blue-50);
+}
+.add-note__row:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 1px;
+}
+.add-note__row:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+.add-note__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--blue-space-2);
+}
+.add-note__title {
+  font-weight: var(--blue-font-weight-semibold);
+}
+.add-note__title--untitled {
+  color: var(--blue-color-text-secondary);
+  font-style: italic;
+}
+.add-note__state {
+  flex: none;
+  color: var(--blue-color-brand-primary-active);
+  font-size: var(--blue-font-size-xs);
+  font-weight: var(--blue-font-weight-semibold);
+}
+.add-note__state--here {
+  color: var(--blue-color-text-secondary);
+}
+.add-note__snippet {
+  overflow: hidden;
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.add-note__meta {
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+}
+.add-note__empty {
+  margin: 0;
+  padding: var(--blue-space-4) 0;
+  text-align: center;
+}
+
+@media (max-width: 1000px) {
+  .board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .board {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .board-card {
+    flex-direction: row;
+  }
+  .board-card__cover {
+    width: 96px;
+    height: auto;
+    min-height: 96px;
+    border-right: 1px solid var(--blue-color-border-default);
+    border-bottom: none;
+  }
+  .board-card__snippet {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+  .reader-footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .reader__top .reader-footer__nav {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .reader-footer__nav,
+  .reader-footer__actions {
+    justify-content: space-between;
+  }
+}
+
+/* No keyboard tip on touch screens. */
+@media (pointer: coarse) {
+  .board-section__keys {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-card,
+  .board-card:hover {
+    transform: none;
+    transition: none;
+  }
+}
