@@ -1,0 +1,69 @@
+/* "Projects in this note" (ProjectNav.tsx): a list like Word's navigation pane, BLUE tokens only. */
+
+.project-nav__title {
+  margin: 0 0 var(--blue-space-2);
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+  font-weight: var(--blue-font-weight-semibold);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.project-nav__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.project-nav__item {
+  display: block;
+  width: 100%;
+  padding: var(--blue-space-1) var(--blue-space-2);
+  border: none;
+  border-left: 3px solid transparent;
+  border-radius: 0 var(--blue-radius-sm) var(--blue-radius-sm) 0;
+  background: none;
+  color: var(--blue-color-text-primary);
+  font: inherit;
+  font-size: var(--blue-font-size-sm);
+  line-height: 1.35;
+  text-align: left;
+  overflow-wrap: anywhere;
+  transition: background-color var(--app-duration-fast) var(--app-ease);
+}
+.project-nav__item:hover {
+  background: var(--blue-color-surface-muted);
+}
+.project-nav__item:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: -2px;
+}
+.project-nav__item--active {
+  border-left-color: var(--blue-color-brand-primary);
+  background: var(--blue-color-blue-50);
+  color: var(--blue-color-brand-primary-active);
+  font-weight: var(--blue-font-weight-semibold);
+}
+.project-nav__untagged {
+  color: var(--blue-color-text-secondary);
+  font-style: italic;
+}
+
+/* The row form: the projects as chips (narrow screens, or no room beside the note). */
+.project-nav--row .project-nav__list {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--blue-space-1);
+}
+.project-nav--row .project-nav__item {
+  width: auto;
+  padding: 2px var(--blue-space-3);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-surface-default);
+}
+.project-nav--row .project-nav__item--active {
+  border-color: var(--blue-color-brand-primary);
+  background: var(--blue-color-blue-50);
+}
