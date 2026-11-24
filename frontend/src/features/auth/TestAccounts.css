@@ -1,0 +1,69 @@
+.test-accounts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-3);
+}
+.test-accounts__divider {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-3);
+}
+.test-accounts__divider::before,
+.test-accounts__divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--blue-color-border-default);
+}
+.test-accounts__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-md);
+  overflow: hidden;
+}
+.test-accounts__list li + li {
+  border-top: 1px solid var(--blue-color-border-default);
+}
+.test-accounts__item {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-3);
+  width: 100%;
+  padding: var(--blue-space-2) var(--blue-space-3);
+  border: none;
+  background: var(--blue-color-surface-default);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--app-duration-fast) var(--app-ease);
+}
+.test-accounts__item:hover:not(:disabled),
+.test-accounts__item:focus-visible {
+  background: var(--blue-color-surface-muted);
+  outline: none;
+}
+.test-accounts__item:disabled {
+  cursor: progress;
+}
+.test-accounts__who {
+  flex: 1;
+  min-width: 0;
+}
+.test-accounts__name {
+  display: block;
+  font-weight: var(--blue-font-weight-semibold);
+}
+.test-accounts__email {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.test-accounts__list {
+  animation: app-rise var(--app-duration) var(--app-ease) backwards;
+}
+.test-accounts__go {
+  flex: none;
+  font-weight: var(--blue-font-weight-semibold);
+  color: var(--blue-color-brand-primary-active);
+}

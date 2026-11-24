@@ -1,0 +1,61 @@
+.role-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--blue-space-4);
+}
+.role-picker__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--blue-space-1);
+  min-height: 160px;
+  padding: var(--blue-space-4);
+  border: 2px solid transparent;
+  border-radius: var(--blue-radius-md);
+  background: var(--blue-color-surface-muted);
+  color: var(--blue-color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform var(--app-duration) var(--app-ease),
+    box-shadow var(--app-duration) var(--app-ease),
+    border-color var(--app-duration) var(--app-ease),
+    background-color var(--app-duration) var(--app-ease);
+}
+.role-picker__card:hover {
+  border-color: var(--blue-color-border-default);
+  box-shadow: var(--blue-shadow-md);
+  transform: translateY(-2px);
+}
+.role-picker__card:active {
+  transform: translateY(0) scale(0.99);
+}
+.role-picker__card:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+}
+.role-picker__card--selected,
+.role-picker__card--selected:hover {
+  border-color: var(--blue-color-brand-primary);
+  background: var(--blue-color-blue-50);
+}
+.role-picker__icon {
+  color: var(--blue-color-text-secondary);
+  margin-bottom: auto;
+}
+.role-picker__card--selected .role-picker__icon {
+  color: var(--blue-color-brand-primary-active);
+}
+.role-picker__label {
+  font-size: var(--blue-font-size-md);
+  font-weight: var(--blue-font-weight-bold);
+}
+.role-picker__current {
+  position: absolute;
+  top: var(--blue-space-3);
+  right: var(--blue-space-3);
+  color: var(--blue-color-brand-primary-active);
+  font-weight: var(--blue-font-weight-semibold);
+}
