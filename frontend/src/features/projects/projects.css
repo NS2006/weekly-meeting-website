@@ -1,0 +1,139 @@
+/* Projects: cards on the shared .tile, the project page head and its in-place edit form. BLUE tokens only. */
+
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--blue-space-4);
+}
+
+.project-card {
+  min-height: 210px;
+}
+.project-card__top {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-3);
+}
+.project-card__heading {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--blue-space-2);
+}
+.project-card__name {
+  font-size: var(--blue-font-size-md);
+  font-weight: var(--blue-font-weight-bold);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.project-card__description {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.project-card__description--empty {
+  font-style: italic;
+  opacity: 0.8;
+}
+.project-card__facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-2);
+  margin: 0;
+  padding: var(--blue-space-3) 0 0;
+  list-style: none;
+  border-top: 1px solid var(--blue-color-border-default);
+  color: var(--blue-color-text-secondary);
+}
+.project-card__facts li {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-2);
+}
+.project-card__facts svg {
+  flex: none;
+  color: var(--blue-color-brand-primary-active);
+}
+.project-card__foot {
+  padding-top: var(--blue-space-2);
+}
+.project-card--archived {
+  background: var(--blue-color-surface-subtle);
+}
+.project-card--new {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.project-card--new .tile__icon {
+  border-radius: 50%;
+  transition:
+    transform var(--app-duration-slow) var(--app-ease),
+    background-color var(--app-duration) var(--app-ease),
+    color var(--app-duration) var(--app-ease);
+}
+.project-card--new:hover .tile__icon {
+  transform: rotate(90deg);
+  background: var(--blue-color-brand-primary-active);
+  color: var(--blue-color-text-on-brand);
+}
+
+/* The project page. */
+.project-monogram--lg {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--blue-radius-lg);
+  font-size: var(--blue-font-size-lg);
+}
+.project-head {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-4);
+  min-width: 0;
+}
+.project-head__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-1);
+  min-width: 0;
+}
+.project-head__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--blue-space-2);
+}
+.project-head__actions {
+  flex-wrap: wrap;
+}
+.project-description {
+  max-width: 72ch;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.project-add-description {
+  align-self: flex-start;
+}
+
+/* Editing in place: the head turns into this form. */
+.project-edit {
+  gap: var(--blue-space-4);
+  border-color: color-mix(in srgb, var(--blue-color-brand-primary) 45%, var(--blue-color-border-default));
+  box-shadow: 0 0 0 3px var(--app-brand-ring);
+  animation: app-rise var(--app-duration) var(--app-ease) backwards;
+}
+.project-edit__head {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-3);
+}
+.project-edit__actions {
+  justify-content: flex-end;
+}
+.project-form__textarea {
+  resize: vertical;
+  font: inherit;
+}
