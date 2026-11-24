@@ -1,0 +1,298 @@
+// Weekly Meeting Notes — database schema (PostgreSQL 15).
+//
+// Prisma is used for migrations only (Prisma Migrate is on the tech radar; Prisma Client is not),
+// so there is no `generator` block. The backend queries with node-postgres (pg).
+//
+// Conventions
+// - Tables and columns are snake_case in the database (@@map / @map); models and fields are named for TypeScript.
+// - Ids are random UUIDs (gen_random_uuid()), so ids in addresses cannot be guessed or counted. Timestamps are timestamptz. Meeting dates are plain DATE in Indonesia time (UTC+7).
+// - updated_at is set by the backend's UPDATE statement (no Prisma Client, so no @updatedAt).
+// - Hand-written SQL that Prisma cannot express lives at the end of the migration file:
+//   the CHECK on meeting_series.days_of_week and the GIN full-text index on notes.
+//
+// Design: "PRD & RFC Weekly Meeting Notes.md", section 10. ERD: "Database Design/Weekly Meeting ERD.png".
+
+datasource db {
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Enums
+
+enum UserStatus {
+  active
+  inactive
+
+  @@map("user_status")
+}
+
+enum WebsiteRole {
+  user
+  admin
+
+  @@map("website_role")
+}
+
+enum TeamRole {
+  leader
+  member
+
+  @@map("team_role")
+}
+
+enum ProjectStatus {
+  active
+  archived
+
+  @@map("project_status")
+}
+
+enum MeetingStatus {
+  scheduled
+  cancelled
+  done
+
+  @@map("meeting_status")
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Users and website roles
+
+/// One row per email that signed in through Apps Gateway. New users start inactive until a website admin activates them.
+/// Users are never deleted; deactivate them instead. The backend stores email in lowercase.
+model User {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  email         String     @unique
+  status        UserStatus @default(inactive)
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// Set on every sign-in; shown on the Users page so admins can judge who still uses the tool.
+  lastLoginAt   DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  /// When an admin last deactivated the account: someone inactive is waiting for access when they signed in after it
+  /// (or were never deactivated), so Home and the Users page can tell a new sign-in from someone who left.
+  deactivatedAt DateTime?  @map("deactivated_at") @db.Timestamptz(6)
+
+  roles                UserRole[]
+  teamMemberships      TeamMember[]     @relation("membership")
+  addedTeamMembers     TeamMember[]     @relation("addedBy")
+  createdTeams         Team[]
+  projects             Project[]
+  notes                Note[]
+  createdMeetingSeries MeetingSeries[]
+  speakingSlots        MeetingSpeaker[]
+
+  @@map("users")
+}
+
+/// Website roles (not team roles). A person can hold both and picks one in the UI; the choice lives in the session.
+model UserRole {
+  userId String      @map("user_id") @db.Uuid
+  role   WebsiteRole
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, role])
+  @@map("user_roles")
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Teams
+
+/// Created by any active user, who becomes its leader. Names may repeat.
+/// Deleting a team sets archived_at; a job deletes it for good 30 days later (members, series, meetings cascade).
+model Team {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String
+  description    String?
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  archivedAt     DateTime? @map("archived_at") @db.Timestamptz(6)
+  /// How the team splits its year (owner, 2026-11-23): 4 quarters by default, or 1, 2, 3, 6 or 12 parts; set by the
+  /// leader. Meetings, notes and the "read the whole quarter" view are grouped by these periods.
+  periodsPerYear Int       @default(4) @map("periods_per_year") @db.SmallInt
+  /// The month (1-12) the team's year starts; January by default (calendar quarters).
+  yearStartMonth Int       @default(1) @map("year_start_month") @db.SmallInt
+
+  creator       User?           @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  members       TeamMember[]
+  meetingSeries MeetingSeries[]
+
+  @@index([archivedAt])
+  @@map("teams")
+}
+
+/// Exactly one leader per team: at most one is enforced by a partial unique index (hand-written in the
+/// migration), at least one by the code (creation adds the leader; hand-over swaps roles in one transaction).
+model TeamMember {
+  teamId  String   @map("team_id") @db.Uuid
+  userId  String   @map("user_id") @db.Uuid
+  role    TeamRole @default(member)
+  addedAt DateTime @default(now()) @map("added_at") @db.Timestamptz(6)
+  addedBy String?  @map("added_by") @db.Uuid
+
+  team  Team  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user  User  @relation("membership", fields: [userId], references: [id], onDelete: Cascade)
+  adder User? @relation("addedBy", fields: [addedBy], references: [id], onDelete: SetNull)
+
+  @@id([teamId, userId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Projects, notes, attachments
+
+/// Owned by exactly one user; nobody else can open it.
+/// Names are unique per owner, ignoring case: a hand-written unique index on (user_id, lower(name)) in the
+/// `projects_page` migration. An archived project is read-only until restored; deleting it deletes its notes.
+model Project {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String        @map("user_id") @db.Uuid
+  name        String
+  description String?
+  status      ProjectStatus @default(active)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// Set by the backend when the name, description or status changes.
+  updatedAt   DateTime      @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  owner    User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  sections NoteSection[]
+
+  @@index([userId])
+  @@map("projects")
+}
+
+/// content is the editor's JSON document (source of truth), never HTML.
+/// content_text is plain text extracted by the backend on every save, for full-text search.
+/// version is bumped on every save: UPDATE ... WHERE id = $1 AND version = $2 (optimistic locking).
+/// A person's own document (for example "Week 48"). Parts of it are project sections (note_sections); the rest is
+/// general text that stays in the note.
+model Note {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  title         String   @default("")
+  content       Json     @default("{}") @db.JsonB
+  contentText   String   @default("") @map("content_text")
+  schemaVersion Int      @default(1) @map("schema_version")
+  version       Int      @default(1)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  owner       User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  attachments Attachment[]
+  meetings    NoteMeeting[]
+  sections    NoteSection[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("notes")
+}
+
+/// The project sections of a note, derived from its content on every save (the note's JSON is the source of truth):
+/// what each project page shows. A deleted project drops its rows; the text stays in the note, untagged.
+model NoteSection {
+  noteId      String @map("note_id") @db.Uuid
+  /// Order of the section among the note's sections.
+  position    Int
+  projectId   String @map("project_id") @db.Uuid
+  /// The section's own blocks, as an editor document.
+  content     Json   @db.JsonB
+  contentText String @default("") @map("content_text")
+
+  note    Note    @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([noteId, position])
+  @@index([projectId])
+  @@map("note_sections")
+}
+
+/// Images live in private object storage; the note's JSON refers to them by attachment id.
+model Attachment {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  noteId     String   @map("note_id") @db.Uuid
+  storageKey String   @map("storage_key")
+  mimeType   String   @map("mime_type")
+  sizeBytes  BigInt   @map("size_bytes")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+  @@map("attachments")
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Meetings
+
+/// A team's recurring schedule. days_of_week uses ISO numbers (Mon = 1 … Sun = 7), e.g. {3,5} = Wednesday and Friday.
+model MeetingSeries {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  teamId     String   @map("team_id") @db.Uuid
+  name       String
+  daysOfWeek Int[]    @map("days_of_week") @db.SmallInt
+  active     Boolean  @default(true)
+  createdBy  String?  @map("created_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  team     Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creator  User?     @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  meetings Meeting[]
+
+  @@index([teamId])
+  @@map("meeting_series")
+}
+
+/// One dated occurrence of a series, generated by the hourly job (4 weeks ahead) and when a series changes.
+/// scheduled_date is the day the series put it on; it never changes and is the generator's key, so a moved or
+/// cancelled meeting is never generated again. meeting_date is the day it really happens: the same, or another
+/// day after the leader moves it. A meeting in the past shows as `done` (the job also stores that).
+model Meeting {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  seriesId      String        @map("series_id") @db.Uuid
+  scheduledDate DateTime      @map("scheduled_date") @db.Date
+  meetingDate   DateTime      @map("meeting_date") @db.Date
+  title         String?
+  status        MeetingStatus @default(scheduled)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  series   MeetingSeries    @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  notes    NoteMeeting[]
+  speakers MeetingSpeaker[]
+
+  @@unique([seriesId, scheduledDate])
+  @@unique([seriesId, meetingDate])
+  @@index([meetingDate])
+  @@map("meetings")
+}
+
+/// Which notes are included in which meeting. position orders one person's notes on that meeting (set by the note's
+/// owner or the team's leader); null until arranged, and those come after the arranged ones, newest first.
+model NoteMeeting {
+  noteId    String @map("note_id") @db.Uuid
+  meetingId String @map("meeting_id") @db.Uuid
+  position  Int?
+
+  note    Note    @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@id([noteId, meetingId])
+  @@index([meetingId])
+  @@map("note_meetings")
+}
+
+/// A meeting's speaking order (owner, 2026-11-23), set by the team's leader: whose notes come first on the board. A
+/// meeting without rows here uses the order of the latest earlier meeting of its schedule that has some, so the
+/// leader sets it once and changes it only when it changes. People not in it come after (leader, then by name).
+model MeetingSpeaker {
+  meetingId String @map("meeting_id") @db.Uuid
+  userId    String @map("user_id") @db.Uuid
+  position  Int
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([meetingId, userId])
+  @@map("meeting_speakers")
+}
