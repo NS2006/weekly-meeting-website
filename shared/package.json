@@ -1,0 +1,12 @@
+{
+  "name": "@weekly-meeting/shared",
+  "private": true,
+  "type": "module",
+  "description": "Types shared by backend and frontend (DTOs, enums as string unions). Types only: no runtime code.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  }
+}
