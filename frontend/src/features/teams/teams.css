@@ -1,0 +1,204 @@
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--blue-space-4);
+}
+/* Team cards use the shared .tile look (app.css); these set their content. */
+.team-card {
+  min-height: 188px;
+}
+.team-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--blue-space-2);
+  margin-bottom: var(--blue-space-1);
+}
+.team-card__name {
+  font-size: var(--blue-font-size-md);
+  font-weight: var(--blue-font-weight-bold);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.team-card__description {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.team-card__foot {
+  border-top: 1px solid var(--blue-color-border-default);
+}
+.team-card--new {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.team-card--new .tile__icon {
+  border-radius: 50%;
+  transition:
+    transform var(--app-duration-slow) var(--app-ease),
+    background-color var(--app-duration) var(--app-ease),
+    color var(--app-duration) var(--app-ease);
+}
+.team-card--new:hover .tile__icon {
+  transform: rotate(90deg);
+  background: var(--blue-color-brand-primary-active);
+  color: var(--blue-color-text-on-brand);
+}
+
+.team-head {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-4);
+  min-width: 0;
+}
+.team-head__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-1);
+  min-width: 0;
+}
+.team-head__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--blue-space-2);
+}
+.team-monogram--lg {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--blue-radius-lg);
+  font-size: var(--blue-font-size-lg);
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--blue-space-1);
+  margin-bottom: var(--blue-space-4);
+  color: var(--blue-color-brand-primary-active);
+  font-weight: var(--blue-font-weight-semibold);
+  text-decoration: none;
+}
+.back-link:hover {
+  text-decoration: underline;
+}
+.back-link__arrow {
+  transition: transform var(--app-duration) var(--app-ease);
+}
+.back-link:hover .back-link__arrow {
+  transform: translateX(-3px);
+}
+
+.deleted-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.deleted-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--blue-space-3);
+  padding: var(--blue-space-3) 0;
+}
+.deleted-list li + li {
+  border-top: 1px solid var(--blue-color-border-default);
+}
+
+.member-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-3);
+  min-width: 220px;
+}
+.member-cell__who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.member-cell__name {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--blue-space-2);
+  font-weight: var(--blue-font-weight-semibold);
+}
+.member-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--blue-space-2);
+  white-space: nowrap;
+}
+
+.danger-zone {
+  border-color: var(--blue-color-feedback-error);
+}
+.danger-zone__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--blue-space-3);
+}
+
+.people-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-md);
+}
+.people-list__item {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-3);
+  padding: var(--blue-space-2) var(--blue-space-3);
+}
+.people-list__item + .people-list__item {
+  border-top: 1px solid var(--blue-color-border-default);
+}
+.people-list__who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.people-list__name {
+  font-weight: var(--blue-font-weight-semibold);
+}
+.people-list__email {
+  overflow-wrap: anywhere;
+}
+
+.team-form__textarea {
+  resize: vertical;
+  font: inherit;
+}
+.delete-confirm .blue-input__field {
+  border-color: var(--blue-color-feedback-error);
+}
+
+/* "Add people": suggestions shown before typing a search. */
+.people-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-2);
+}
+.people-suggestions__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--blue-space-3);
+}
+.people-suggestions__title {
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+  font-weight: var(--blue-font-weight-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
