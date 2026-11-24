@@ -1,0 +1,255 @@
+/* A period's Projects board (team-projects): columns of plain cards side by side, each column scrolling on its own,
+   and a project's own page. Colours are BLUE tokens. */
+.team-project__owner {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--blue-space-2);
+}
+.team-project__note {
+  color: var(--blue-color-text-primary);
+  font-weight: var(--blue-font-weight-semibold);
+}
+.team-project__meetings {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--blue-space-2);
+}
+
+.project-board {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-4);
+  min-width: 0;
+}
+
+/* The tools, one line where it fits, stay below the header while the board is read. */
+.board-tools {
+  position: sticky;
+  top: var(--app-header-height, 64px);
+  z-index: 6;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--blue-space-2) var(--blue-space-3);
+  padding: var(--blue-space-3) var(--blue-space-4);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-lg);
+  background: var(--blue-color-surface-default);
+}
+.board-tools__group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--blue-space-2);
+}
+.board-tools__label {
+  color: var(--blue-color-text-secondary);
+}
+.board-tools__search {
+  flex: 1 1 180px;
+  min-width: 0;
+  max-width: 280px;
+}
+.board-tools__search .blue-input__field {
+  min-height: 32px;
+  padding-block: var(--blue-space-1);
+}
+.board-tools__summary {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--blue-space-1);
+  margin: 0 0 0 auto;
+}
+.board-tools__summary .link-button {
+  margin-left: var(--blue-space-2);
+}
+/* The board: columns in rows that wrap (owner, 2026-11-24: no sideways scrolling); each column as tall as its cards,
+   at most a screen's worth, then it scrolls on its own. Positioned, so what is placed inside it (screen-reader text)
+   stays within it. */
+.board {
+  --board-column-height: min(560px, max(320px, calc(100dvh - var(--app-header-height, 64px) - var(--board-tools-height, 64px) - 48px)));
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  align-items: start;
+  gap: var(--blue-space-4);
+}
+.project-board:focus {
+  outline: none;
+}
+.board-column {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: var(--board-column-height);
+  border-radius: var(--blue-radius-lg);
+  background: var(--blue-color-surface-muted);
+}
+.board-column__head {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-2);
+  padding: var(--blue-space-3) var(--blue-space-3) var(--blue-space-2);
+}
+.board-column__title {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--blue-font-size-sm);
+  font-weight: var(--blue-font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+.board-column__link {
+  color: inherit;
+  text-decoration: none;
+}
+.board-column__link:hover {
+  color: var(--blue-color-brand-primary-active);
+  text-decoration: underline;
+}
+.board-column__sub {
+  font-weight: var(--blue-font-weight-regular);
+}
+.board-column__count {
+  flex: none;
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-sm);
+}
+.board-column__cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-2);
+  min-height: 0;
+  margin: 0;
+  padding: 0 var(--blue-space-2) var(--blue-space-2);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  list-style: none;
+}
+
+/* A card: its name and one quiet line; the whole card opens the project. */
+.board-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-1);
+  padding: var(--blue-space-2) var(--blue-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--blue-radius-md);
+  background: var(--blue-color-surface-default);
+  color: var(--blue-color-text-primary);
+  text-decoration: none;
+  box-shadow: 0 1px 1px rgba(33, 37, 41, 0.08);
+  transition:
+    border-color var(--app-duration) var(--app-ease),
+    box-shadow var(--app-duration) var(--app-ease);
+}
+.board-card:hover {
+  border-color: var(--blue-color-brand-primary);
+  color: var(--blue-color-text-primary);
+}
+.board-card:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 1px;
+}
+.board-card--archived {
+  background: var(--blue-color-surface-muted);
+  border-color: var(--blue-color-border-default);
+}
+.board-card--skeleton {
+  gap: var(--blue-space-2);
+}
+.board-card__name {
+  font-size: var(--blue-font-size-sm);
+  font-weight: var(--blue-font-weight-semibold);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.board-card__name mark {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--blue-color-yellow-500) 30%, transparent);
+  color: inherit;
+}
+.board-card__facts {
+  color: var(--blue-color-text-secondary);
+}
+
+/* A project's page. Back to top moves the focus to its top bar (not a stop for Tab). */
+.board-page__top:focus {
+  outline: none;
+}
+.board-page__steps {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--blue-space-2);
+}
+.board-page__position {
+  white-space: nowrap;
+}
+.board-page__meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--blue-space-2);
+}
+.board-page__timeline p {
+  margin: 0 0 var(--blue-space-2);
+}
+.board-page__weeks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--blue-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.board-page__only {
+  margin: calc(-1 * var(--blue-space-2)) 0 0;
+}
+.board-week {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--blue-space-1);
+  padding: 2px var(--blue-space-2);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-pill);
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+}
+.board-week--on {
+  border-color: var(--blue-color-brand-primary);
+  background: var(--blue-color-blue-50);
+  color: var(--blue-color-brand-primary-active);
+}
+.board-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: 50%;
+  background: var(--blue-color-surface-default);
+}
+.board-week--on .board-dot {
+  border-color: var(--blue-color-brand-primary);
+  background: var(--blue-color-brand-primary);
+}
+
+@media (max-width: 600px) {
+  /* On a phone the tools wrap to several lines: they stay where they are, and the board takes the screen. */
+  .board-tools {
+    position: static;
+  }
+  .board-tools__search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .board-tools__summary {
+    margin-left: 0;
+  }
+  .board {
+    --board-column-height: 70dvh;
+  }
+}
