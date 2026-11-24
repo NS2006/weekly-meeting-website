@@ -1,0 +1,43 @@
+{
+  // Ctrl+Shift+B (Run Build Task) starts "dev: backend + frontend": both dev servers side by side.
+  // Stop them with the trash icon on each terminal, or "Tasks: Terminate Task".
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev: backend + frontend",
+      "dependsOn": ["backend: dev", "frontend: dev"],
+      "dependsOrder": "parallel",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "backend: dev",
+      "type": "npm",
+      "script": "dev",
+      "path": "backend",
+      "detail": "Express API on http://127.0.0.1:3000 (restarts on change)",
+      "isBackground": true,
+      "presentation": { "group": "dev", "panel": "dedicated", "reveal": "always", "clear": true },
+      // Tells VS Code when the server is up, so the combined task does not wait forever.
+      "problemMatcher": {
+        "owner": "weekly-meeting-backend",
+        "pattern": { "regexp": "^\\b\\B$" },
+        "background": { "activeBegins": true, "beginsPattern": "node --env-file", "endsPattern": "backend listening" }
+      }
+    },
+    {
+      "label": "frontend: dev",
+      "type": "npm",
+      "script": "dev",
+      "path": "frontend",
+      "detail": "Vite on http://127.0.0.1:5173 (proxies /api to the backend)",
+      "isBackground": true,
+      "presentation": { "group": "dev", "panel": "dedicated", "reveal": "always", "clear": true },
+      "problemMatcher": {
+        "owner": "weekly-meeting-frontend",
+        "pattern": { "regexp": "^\\b\\B$" },
+        "background": { "activeBegins": true, "beginsPattern": "vite", "endsPattern": "ready in" }
+      }
+    }
+  ]
+}

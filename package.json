@@ -1,0 +1,16 @@
+{
+  "name": "weekly-meeting",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend",
+    "shared"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "overrides": {
+    "effect": "3.22.5",
+    "deepmerge-ts": "8.0.2"
+  }
+}

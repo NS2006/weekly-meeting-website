@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+Database Design/__pycache__/
+
+# Note images stored by the local storage driver (development only)
+backend/uploads/
+
+# Real company documents used only as a reference for the seed's shape (never committed: real names and figures)
+dummy_data/
