@@ -1,0 +1,37 @@
+/* A light hero: white surface with a soft brand glow in the corner (text stays on white for contrast). */
+.home-hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-2);
+  margin-bottom: var(--blue-space-6);
+  padding: var(--blue-space-8);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-lg);
+  background:
+    radial-gradient(520px 260px at 100% 0%, var(--app-brand-ring), transparent 70%) no-repeat,
+    var(--blue-color-surface-default);
+  box-shadow: var(--blue-shadow-sm);
+}
+.home-hero__date {
+  color: var(--blue-color-brand-primary-active);
+  font-size: var(--blue-font-size-xs);
+  font-weight: var(--blue-font-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.home-hero__lead {
+  max-width: 60ch;
+  font-size: var(--blue-font-size-md);
+  color: var(--blue-color-text-secondary);
+}
+.home-hero__title {
+  font-size: var(--blue-font-size-2xl);
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .home-hero {
+    padding: var(--blue-space-6) var(--blue-space-5);
+  }
+}
