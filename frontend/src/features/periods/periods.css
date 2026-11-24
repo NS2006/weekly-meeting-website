@@ -1,0 +1,877 @@
+/* A team's year in periods (quarters by default): cards on the team page, the period page, Home's current period. */
+
+.period-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: var(--blue-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.period-grid > li {
+  display: flex;
+}
+.period-strip__more {
+  align-self: flex-start;
+}
+
+/* One period (on the shared .tile). */
+.period-card {
+  flex: 1;
+  gap: var(--blue-space-2);
+  padding: var(--blue-space-4);
+}
+.period-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--blue-space-2);
+}
+.period-card__label {
+  font-size: var(--blue-font-size-lg);
+  font-weight: var(--blue-font-weight-bold);
+  letter-spacing: -0.01em;
+}
+.period-card__facts {
+  color: var(--blue-color-text-primary);
+}
+.period-card__foot {
+  padding-top: var(--blue-space-2);
+  color: var(--blue-color-brand-primary-active);
+  font-weight: var(--blue-font-weight-semibold);
+}
+/* The current one stands out: brand edge and a light brand wash. */
+.period-card--current {
+  border-color: color-mix(in srgb, var(--blue-color-brand-primary) 45%, var(--blue-color-border-default));
+  background: linear-gradient(180deg, var(--blue-color-blue-50), var(--blue-color-surface-default) 75%);
+  box-shadow: var(--blue-shadow-md);
+}
+/* Ended ones stay readable, one step quieter. */
+.period-card--upcoming {
+  border-color: var(--blue-color-neutral-400);
+}
+.period-card--ended {
+  background: var(--blue-color-surface-subtle);
+}
+.period-card--ended .period-card__label {
+  color: var(--blue-color-text-secondary);
+}
+
+/* How far into the current period. */
+.period-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-1);
+  min-width: 0;
+}
+.period-progress__bar {
+  display: block;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-neutral-200);
+}
+.period-progress__done {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--app-gradient-brand);
+}
+.period-progress__text {
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+}
+
+/* "Q4" over "2026", the size of a meeting's large date tile. */
+.period-tile {
+  flex: none;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
+  width: 64px;
+  height: 72px;
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-lg);
+  background: var(--blue-color-surface-muted);
+  color: var(--blue-color-text-secondary);
+}
+.period-tile--current {
+  border-color: transparent;
+  background: var(--app-gradient-brand);
+  color: var(--blue-color-text-on-brand);
+  box-shadow: var(--app-brand-shadow);
+}
+.period-tile--upcoming {
+  border-style: dashed;
+  border-color: var(--blue-color-neutral-400);
+  background: var(--blue-color-surface-default);
+}
+.period-tile__main {
+  font-size: var(--blue-font-size-2xl);
+  font-weight: var(--blue-font-weight-bold);
+  line-height: 1;
+}
+.period-tile--long .period-tile__main {
+  font-size: var(--blue-font-size-md);
+}
+.period-tile__year {
+  font-size: var(--blue-font-size-xs);
+  font-weight: var(--blue-font-weight-semibold);
+  letter-spacing: 0.02em;
+}
+
+/* The leader's split dialog. */
+.split-options {
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+.split-options__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--blue-space-2);
+  margin-top: var(--blue-space-1);
+}
+.split-option {
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--blue-space-3);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-md);
+  background: var(--blue-color-surface-default);
+  transition:
+    border-color var(--app-duration) var(--app-ease),
+    background-color var(--app-duration) var(--app-ease);
+}
+.split-option:hover {
+  border-color: color-mix(in srgb, var(--blue-color-brand-primary) 45%, var(--blue-color-border-default));
+}
+/* The radio itself is hidden; the whole box is the choice, and shows the keyboard focus. */
+.split-option__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.split-option:has(.split-option__input:focus-visible) {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+}
+.split-option--selected {
+  border-color: var(--blue-color-brand-primary);
+  background: var(--blue-color-blue-50);
+  box-shadow: inset 0 0 0 1px var(--blue-color-brand-primary);
+}
+.split-option__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--blue-space-1) var(--blue-space-2);
+  font-weight: var(--blue-font-weight-semibold);
+}
+.split-option--selected .split-option__title {
+  color: var(--blue-color-brand-primary-active);
+}
+.split-option__detail {
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+}
+.split-option__default {
+  padding: 0 var(--blue-space-2);
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-surface-muted);
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+  font-weight: var(--blue-font-weight-medium);
+  line-height: 18px;
+}
+.split-help {
+  margin-top: var(--blue-space-1);
+}
+.split-preview {
+  padding: var(--blue-space-3);
+  border-radius: var(--blue-radius-md);
+  background: var(--blue-color-surface-subtle);
+}
+.split-preview__title {
+  margin: 0 0 var(--blue-space-2);
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+  font-weight: var(--blue-font-weight-semibold);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+/* One row for halves, three parts and quarters; rows of three or four for shorter periods. */
+.split-preview__list {
+  display: grid;
+  grid-template-columns: repeat(var(--preview-columns, 4), minmax(0, 1fr));
+  gap: var(--blue-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.split-preview__item {
+  display: flex;
+  flex-direction: column;
+  padding: var(--blue-space-2) var(--blue-space-3);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-md);
+  background: var(--blue-color-surface-default);
+  font-size: var(--blue-font-size-sm);
+}
+.split-preview__item--now {
+  border-color: var(--blue-color-brand-primary);
+}
+.split-preview__label {
+  font-weight: var(--blue-font-weight-semibold);
+}
+.split-preview__months {
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+}
+.split-preview__now {
+  color: var(--blue-color-brand-primary-active);
+  font-size: var(--blue-font-size-xs);
+  font-weight: var(--blue-font-weight-semibold);
+}
+@media (max-width: 600px) {
+  .split-options__grid,
+  .split-preview__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* The period page: its tile and name, then where it stands (how far in, ended, or still to come). */
+.period-head {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-4);
+  min-width: 0;
+}
+.period-head__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-1);
+  min-width: 0;
+}
+.period-head__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--blue-space-1) var(--blue-space-2);
+}
+.period-state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--blue-space-2) var(--blue-space-5);
+  margin: 0;
+  padding: var(--blue-space-3) var(--blue-space-4);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-md);
+  background: var(--blue-color-surface-default);
+}
+.period-state .period-progress {
+  flex: 1 1 240px;
+  max-width: 420px;
+}
+.period-state__text {
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-sm);
+}
+
+/* Reading the whole period: the meetings on the left (staying in view), the notes on the right. */
+.period-reader {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-4);
+}
+.period-reader__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--blue-space-3);
+}
+.period-tools__filters,
+.period-tools__save {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--blue-space-2);
+}
+.period-reader__summary {
+  margin: 0;
+}
+/* Back to top moves the focus here (it is not a stop for Tab). */
+.period-reader:focus {
+  outline: none;
+}
+/* What was picked, under the period's name on paper only. */
+.period-print-selection {
+  display: none;
+}
+
+/* A button that opens a list of check boxes (which meetings, whose notes). */
+.checklist-filter {
+  position: relative;
+}
+.checklist-filter__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--blue-space-1);
+  min-height: 32px;
+  max-width: 280px;
+  padding: 2px var(--blue-space-3);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-surface-default);
+  color: var(--blue-color-text-primary);
+  font: inherit;
+  font-size: var(--blue-font-size-sm);
+  transition: background-color var(--app-duration-fast) var(--app-ease);
+}
+.checklist-filter__toggle:hover,
+.checklist-filter__toggle[aria-expanded='true'] {
+  background: var(--blue-color-blue-50);
+}
+.checklist-filter__toggle:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+}
+/* Some picked: the brand edge says the list is narrowed. */
+.checklist-filter__toggle--on {
+  border-color: var(--blue-color-brand-primary);
+  background: var(--blue-color-blue-50);
+}
+.checklist-filter__label {
+  color: var(--blue-color-text-secondary);
+}
+.checklist-filter__value {
+  overflow: hidden;
+  font-weight: var(--blue-font-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.checklist-filter__chevron {
+  flex: none;
+  color: var(--blue-color-text-secondary);
+}
+.checklist-filter__panel {
+  position: absolute;
+  top: calc(100% + var(--blue-space-2));
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  min-width: 240px;
+  max-width: calc(100vw - 2 * var(--blue-space-4));
+  max-height: min(420px, 65vh);
+  padding: var(--blue-space-2);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-lg);
+  background: var(--blue-color-surface-default);
+  box-shadow: var(--blue-shadow-lg);
+  animation: app-fade var(--app-duration-fast) var(--app-ease);
+}
+/* Finding a name in a long list (more than eight). */
+.checklist-filter__find {
+  margin: 0 0 var(--blue-space-2);
+  padding: var(--blue-space-1) var(--blue-space-2);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-sm);
+  background: var(--blue-color-surface-default);
+  color: var(--blue-color-text-primary);
+  font: inherit;
+  font-size: var(--blue-font-size-sm);
+}
+.checklist-filter__find:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 1px;
+}
+.checklist-filter__empty {
+  margin: 0;
+  padding: var(--blue-space-2);
+}
+.checklist-filter__list {
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* The whole row is the label: a click on the name or the count ticks the box too. */
+.checklist-filter__option {
+  display: flex;
+  cursor: pointer;
+  /* A click that moves a little would select the name, and the browser then leaves the box alone. */
+  user-select: none;
+  align-items: center;
+  gap: var(--blue-space-2);
+  padding: var(--blue-space-1) var(--blue-space-2);
+  border-radius: var(--blue-radius-sm);
+  font-size: var(--blue-font-size-sm);
+}
+.checklist-filter__option:hover {
+  background: var(--blue-color-surface-muted);
+}
+.checklist-filter__option input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--blue-color-brand-primary);
+}
+.checklist-filter__option--all {
+  margin-bottom: var(--blue-space-1);
+  padding-bottom: var(--blue-space-2);
+  border-bottom: 1px solid var(--blue-color-border-default);
+  border-radius: 0;
+  font-weight: var(--blue-font-weight-semibold);
+}
+.checklist-filter__text {
+  flex: 1;
+}
+.checklist-filter__detail {
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+  white-space: nowrap;
+}
+/* Phones: the list spans the filter row under the buttons, so the second one never runs off the screen. */
+@media (max-width: 600px) {
+  .period-tools__filters {
+    position: relative;
+    flex: 1 1 100%;
+  }
+  .checklist-filter {
+    position: static;
+  }
+  .checklist-filter__panel {
+    right: 0;
+    width: auto;
+    min-width: 0;
+  }
+}
+.checklist-filter__foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--blue-space-2) var(--blue-space-2) var(--blue-space-1);
+  border-top: 1px solid var(--blue-color-border-default);
+}
+.period-reader__loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-3);
+}
+.period-reader__layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--blue-space-6);
+}
+.period-nav {
+  position: sticky;
+  top: calc(var(--app-header-height, 64px) + var(--blue-space-4));
+  max-height: calc(100dvh - var(--app-header-height, 64px) - var(--blue-space-8));
+  overflow-y: auto;
+  padding-right: var(--blue-space-1);
+}
+/* Wide screens: the column beside the notes, in view while reading. What to read and the downloads on top; the
+   meetings below scroll on their own when they do not fit. Above the notes (z-index), under the header (10). */
+.period-side {
+  position: sticky;
+  top: calc(var(--app-header-height, 64px) + var(--blue-space-4));
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-4);
+  max-height: calc(100dvh - var(--app-header-height, 64px) - var(--blue-space-8));
+}
+.period-side .period-nav {
+  position: static;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+.period-tools {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-3);
+  padding-bottom: var(--blue-space-4);
+  border-bottom: 1px solid var(--blue-color-border-default);
+}
+.period-side .period-tools__filters {
+  flex-direction: column;
+  align-items: stretch;
+}
+.period-side .checklist-filter__toggle {
+  width: 100%;
+  max-width: none;
+}
+.period-side .checklist-filter__chevron {
+  margin-left: auto;
+}
+.period-side .period-tools__filters .link-button {
+  align-self: flex-start;
+}
+.period-side .period-tools__save {
+  flex-direction: column;
+  align-items: stretch;
+}
+.period-tools__status {
+  margin: 0;
+}
+.period-nav__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* Two classes: the project list's item style (display: block) is loaded later and would put the count right after
+   the day, where it reads as part of it. The count sits at the far end instead. */
+.project-nav__item.period-nav__meeting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--blue-space-3);
+}
+.period-nav__count {
+  flex: none;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-surface-muted);
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+  font-weight: var(--blue-font-weight-medium);
+  text-align: center;
+}
+.period-nav__people {
+  display: flex;
+  flex-direction: column;
+  margin: 2px 0 var(--blue-space-2) var(--blue-space-3);
+  padding: 0 0 0 var(--blue-space-2);
+  border-left: 1px solid var(--blue-color-border-default);
+  list-style: none;
+}
+.period-nav__person {
+  display: block;
+  width: 100%;
+  padding: 2px var(--blue-space-2);
+  border: none;
+  border-radius: var(--blue-radius-sm);
+  background: none;
+  color: var(--blue-color-text-secondary);
+  font: inherit;
+  font-size: var(--blue-font-size-sm);
+  line-height: 1.35;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.period-nav__person:hover {
+  background: var(--blue-color-surface-muted);
+  color: var(--blue-color-text-primary);
+}
+.period-nav__person:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: -2px;
+}
+.period-nav__person--active {
+  color: var(--blue-color-brand-primary-active);
+  font-weight: var(--blue-font-weight-semibold);
+}
+
+.period-reader__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-5);
+  min-width: 0;
+}
+.period-meeting {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-4);
+  padding: var(--blue-space-5);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-lg);
+  background: var(--blue-color-surface-default);
+  box-shadow: var(--blue-shadow-sm);
+}
+.period-meeting,
+.period-person {
+  scroll-margin-top: calc(var(--app-header-height, 64px) + var(--period-jump-height, 0px) + var(--blue-space-4));
+}
+.period-meeting:focus,
+.period-person:focus {
+  outline: none;
+}
+.period-meeting:focus-visible,
+.period-person:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 4px;
+}
+.period-meeting__head {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-3);
+  padding-bottom: var(--blue-space-3);
+  border-bottom: 1px solid var(--blue-color-border-default);
+}
+.period-meeting__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.period-meeting__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--blue-space-2);
+  margin: 0;
+  font-size: var(--blue-font-size-lg);
+  font-weight: var(--blue-font-weight-bold);
+}
+.period-meeting__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--blue-space-2);
+}
+.period-person {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-2);
+}
+.period-person + .period-person {
+  padding-top: var(--blue-space-4);
+  border-top: 1px dashed var(--blue-color-border-default);
+}
+.period-person__name {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-2);
+  margin: 0;
+  font-size: var(--blue-font-size-md);
+  font-weight: var(--blue-font-weight-semibold);
+}
+.period-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-1);
+  padding-left: 36px;
+}
+.period-note + .period-note {
+  margin-top: var(--blue-space-3);
+}
+.period-note__title {
+  margin: 0;
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+  font-weight: var(--blue-font-weight-semibold);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.period-note__content .note-section__label {
+  margin-bottom: var(--blue-space-2);
+}
+
+/* Narrower screens: one column, a "Go to" list that stays below the header. */
+@media (max-width: 900px) {
+  .period-reader {
+    --period-jump-height: 52px;
+  }
+  .period-reader__layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--blue-space-3);
+  }
+  .period-jump {
+    position: sticky;
+    top: var(--app-header-height, 64px);
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: var(--blue-space-2);
+    padding: var(--blue-space-2) 0;
+    background: color-mix(in srgb, var(--blue-color-surface-subtle) 92%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+  .period-jump__label {
+    color: var(--blue-color-text-secondary);
+    font-weight: var(--blue-font-weight-semibold);
+    white-space: nowrap;
+  }
+  .period-jump .blue-select {
+    flex: 1;
+    min-width: 0;
+  }
+  .period-jump .blue-select__field {
+    width: 100%;
+  }
+  .period-meeting {
+    padding: var(--blue-space-4);
+  }
+  .period-note {
+    padding-left: 0;
+  }
+}
+
+/* Print or save as PDF: only the period's name and its notes. */
+@media print {
+  body:has(.period-reader) :is(.app__header, .meeting-topbar, .blue-tabs, .period-side, .period-nav, .period-jump, .period-reader__bar, .period-reader__summary, .period-state, .back-to-top) {
+    display: none !important;
+  }
+  .period-print-selection {
+    display: block;
+    margin: 0 0 var(--blue-space-6);
+    color: var(--blue-color-text-secondary);
+    font-style: italic;
+  }
+  body:has(.period-reader) .app__main > * {
+    animation: none !important;
+  }
+  .period-reader__layout {
+    display: block;
+  }
+  .period-meeting {
+    border: none;
+    box-shadow: none;
+    padding: 0;
+  }
+  .period-meeting + .period-meeting {
+    margin-top: var(--blue-space-8);
+  }
+  .period-meeting__head,
+  .period-person__name {
+    break-after: avoid;
+  }
+}
+
+/* Home: each team's current period. */
+.current-periods {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.current-period {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--blue-space-4);
+  padding: var(--blue-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--blue-radius-md);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    background-color var(--app-duration) var(--app-ease),
+    border-color var(--app-duration) var(--app-ease);
+}
+a.current-period:hover {
+  border-color: var(--blue-color-border-default);
+  background: var(--blue-color-surface-subtle);
+}
+a.current-period:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+}
+.current-period__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-1);
+  min-width: 0;
+}
+.current-period__text .period-progress {
+  max-width: 360px;
+}
+.current-period__team {
+  font-size: var(--blue-font-size-md);
+  font-weight: var(--blue-font-weight-semibold);
+}
+.current-period__go {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-2);
+  color: var(--blue-color-brand-primary-active);
+  font-weight: var(--blue-font-weight-semibold);
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .current-period {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--blue-space-3);
+  }
+  .current-period__go {
+    grid-column: 2;
+  }
+}
+
+/* The period's meetings: pick a month (pressed buttons, a pill each). */
+.period-meetings__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--blue-space-2) var(--blue-space-4);
+}
+.period-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--blue-space-1);
+}
+.period-choice__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--blue-space-1);
+  min-height: 32px;
+  padding: 2px var(--blue-space-3);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-surface-default);
+  color: var(--blue-color-text-primary);
+  font: inherit;
+  font-size: var(--blue-font-size-sm);
+  font-weight: var(--blue-font-weight-medium);
+  transition:
+    background-color var(--app-duration-fast) var(--app-ease),
+    border-color var(--app-duration-fast) var(--app-ease);
+}
+.period-choice__item:hover {
+  background: var(--blue-color-surface-muted);
+}
+.period-choice__item:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+}
+.period-choice__item[aria-pressed='true'] {
+  border-color: var(--blue-color-brand-primary);
+  background: var(--blue-color-blue-50);
+  color: var(--blue-color-brand-primary-active);
+  font-weight: var(--blue-font-weight-semibold);
+}
+.period-choice__count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-surface-muted);
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+  text-align: center;
+}
+.period-choice__item[aria-pressed='true'] .period-choice__count {
+  background: var(--blue-color-surface-default);
+}
