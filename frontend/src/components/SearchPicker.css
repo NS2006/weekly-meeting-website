@@ -1,0 +1,106 @@
+/* SearchPicker: a field like the other lists that opens a panel with a search box, the fixed choices and a few at
+   random. The panel sits above the page's lists (z-index 8), under the sticky header (10). */
+.search-picker {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-1);
+}
+.search-picker__button {
+  width: 100%;
+  min-height: 40px;
+  text-align: left;
+}
+.search-picker__value {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-picker__panel {
+  position: absolute;
+  top: calc(100% + var(--blue-space-1));
+  left: 0;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-3);
+  width: min(360px, calc(100vw - 2 * var(--blue-space-4)));
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  padding: var(--blue-space-3);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-lg);
+  background: var(--blue-color-surface-default);
+  box-shadow: var(--blue-shadow-lg);
+  animation: app-fade var(--app-duration-fast) var(--app-ease);
+}
+.search-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.search-picker__option {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-2);
+  width: 100%;
+  padding: var(--blue-space-2) var(--blue-space-3);
+  border: 0;
+  border-radius: var(--blue-radius-md);
+  background: none;
+  color: var(--blue-color-text-primary);
+  font: inherit;
+  font-size: var(--blue-font-size-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.search-picker__option:hover,
+.search-picker__option:focus-visible {
+  background: var(--blue-color-surface-muted);
+  outline: none;
+}
+.search-picker__option[aria-pressed='true'] {
+  font-weight: var(--blue-font-weight-semibold);
+}
+.search-picker__name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.search-picker__tag {
+  flex: none;
+  padding: 0 var(--blue-space-2);
+  border-radius: var(--blue-radius-sm);
+  background: var(--blue-color-surface-muted);
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+  line-height: 20px;
+}
+.search-picker__check {
+  flex: none;
+  color: var(--blue-color-brand-primary-active);
+}
+.search-picker__suggested {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-2);
+  padding-top: var(--blue-space-3);
+  border-top: 1px solid var(--blue-color-border-default);
+}
+.search-picker__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--blue-space-2);
+}
+.search-picker__title {
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+  font-weight: var(--blue-font-weight-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}

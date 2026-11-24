@@ -1,0 +1,155 @@
+/* A note's picture on the whole screen (components/ImageViewer.tsx), BLUE tokens only. */
+
+.image-viewer {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--blue-color-neutral-900) 96%, transparent);
+  color: var(--blue-color-neutral-0);
+}
+.image-viewer[open] {
+  display: flex;
+  flex-direction: column;
+}
+.image-viewer::backdrop {
+  background: transparent;
+}
+
+.image-viewer__bar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--blue-space-2) var(--blue-space-3);
+  padding: var(--blue-space-2) var(--blue-space-4);
+}
+.image-viewer__caption {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--blue-font-size-sm);
+}
+.image-viewer__tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--blue-space-1);
+  margin-left: auto;
+}
+.image-viewer__tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 var(--blue-space-2);
+  border: 1px solid color-mix(in srgb, var(--blue-color-neutral-0) 30%, transparent);
+  border-radius: var(--blue-radius-md);
+  background: color-mix(in srgb, var(--blue-color-neutral-0) 10%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: var(--blue-font-size-lg);
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+}
+.image-viewer__tool:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--blue-color-neutral-0) 22%, transparent);
+}
+.image-viewer__tool:focus-visible {
+  outline: 2px solid var(--blue-color-neutral-0);
+  outline-offset: 2px;
+}
+.image-viewer__tool:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.image-viewer__zoom {
+  min-width: 52px;
+  font-size: var(--blue-font-size-sm);
+  text-align: center;
+}
+
+/* The picture's area: the picture fitted in the middle, zoomed and moved with a transform. */
+.image-viewer__stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: var(--blue-space-2) var(--blue-space-4);
+  touch-action: none;
+  cursor: default;
+}
+/* Fitted = as large as the area allows (small screenshots grow too, so their text can be read). */
+.image-viewer__picture {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform-origin: center;
+  transition: transform 140ms ease-out;
+  user-select: none;
+  -webkit-user-drag: none;
+  cursor: inherit;
+}
+.image-viewer__stage--over {
+  cursor: zoom-in;
+}
+.image-viewer__stage--zoomed.image-viewer__stage--over {
+  cursor: grab;
+}
+.image-viewer__stage--moving {
+  cursor: grabbing;
+}
+.image-viewer__stage--moving .image-viewer__picture {
+  transition: none;
+}
+
+.image-viewer__hint {
+  margin: 0;
+  padding: var(--blue-space-2) var(--blue-space-4) var(--blue-space-3);
+  color: color-mix(in srgb, var(--blue-color-neutral-0) 75%, transparent);
+  font-size: var(--blue-font-size-xs);
+  text-align: center;
+}
+.image-viewer__hint--touch {
+  display: none;
+}
+@media (pointer: coarse) {
+  .image-viewer__hint--mouse {
+    display: none;
+  }
+  .image-viewer__hint--touch {
+    display: inline;
+  }
+}
+
+@media (max-width: 600px) {
+  .image-viewer__bar {
+    padding: var(--blue-space-2);
+  }
+  .image-viewer__caption {
+    flex-basis: 100%;
+  }
+  .image-viewer__stage {
+    padding: var(--blue-space-2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image-viewer__picture {
+    transition: none;
+  }
+}

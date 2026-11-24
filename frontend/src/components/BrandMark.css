@@ -1,0 +1,25 @@
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--blue-space-3);
+}
+.brand__mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--blue-radius-md);
+  background: var(--app-gradient-brand);
+  color: var(--blue-color-text-on-brand);
+  box-shadow: var(--app-brand-shadow);
+}
+.brand__name {
+  display: block;
+  font-size: var(--blue-font-size-md);
+  font-weight: var(--blue-font-weight-bold);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.brand__tagline {
+  display: block;
+}

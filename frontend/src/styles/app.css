@@ -1,0 +1,557 @@
+/* App-wide base styles. Colors, spacing and type come from blue-tokens.css only. */
+
+/* Derived from BLUE tokens (no new colors): brand gradient, soft brand tints, motion. */
+:root {
+  /*
+   * Readability (owner, 2026-11-23): text must be easy to read for everyone.
+   * - Secondary text sits halfway between BLUE neutral 600 and 800 (about 7:1 on white; neutral 600 alone is 4.5:1
+   *   on the page background, the bare minimum).
+   * - Type is one step larger than BLUE's defaults: body 15 px, small 13 px.
+   * - Filled brand buttons start at blue 600, so white text keeps at least 4.5:1 (blue 500 gives 3.3:1).
+   */
+  --blue-color-text-secondary: color-mix(in srgb, var(--blue-color-neutral-600) 50%, var(--blue-color-neutral-800));
+  --blue-font-size-xs: 13px;
+  --blue-font-size-sm: 15px;
+  --app-gradient-brand: linear-gradient(135deg, var(--blue-color-blue-600), var(--blue-color-blue-700));
+  --app-brand-glow: color-mix(in srgb, var(--blue-color-brand-primary) 12%, transparent);
+  --app-brand-ring: color-mix(in srgb, var(--blue-color-brand-primary) 24%, transparent);
+  --app-brand-shadow: 0 6px 16px color-mix(in srgb, var(--blue-color-brand-primary) 22%, transparent);
+  --app-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --app-duration-fast: 120ms;
+  --app-duration: 200ms;
+  --app-duration-slow: 360ms;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-size: var(--blue-font-size-sm);
+  line-height: var(--blue-line-height-normal);
+  color: var(--blue-color-text-primary);
+  /* A soft brand glow at the top of every page, fading into the subtle surface. */
+  background:
+    radial-gradient(1100px 420px at 50% -180px, var(--app-brand-glow), transparent 70%) no-repeat,
+    var(--blue-color-surface-subtle);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+::selection {
+  background: var(--app-brand-ring);
+}
+
+.muted {
+  color: var(--blue-color-text-secondary);
+}
+
+.small {
+  font-size: var(--blue-font-size-xs);
+}
+
+.text-danger,
+.blue-button.text-danger {
+  /* Red text darkened towards neutral 900: 4.5:1 or more on white (the plain error red is 4:1). */
+  color: color-mix(in srgb, var(--blue-color-feedback-error) 80%, var(--blue-color-neutral-900));
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+/* A name, team, email or typed text inside a sentence (EntityName): a soft brand highlight, so the value
+   stands apart from the wording around it. Wrapped lines keep their padding. */
+.entity-name {
+  padding: 0.05em 0.35em;
+  border-radius: var(--blue-radius-sm);
+  background: var(--blue-color-blue-50);
+  color: var(--blue-color-brand-primary-active);
+  font-weight: var(--blue-font-weight-semibold);
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+:is(h1, h2, h3, strong, b) .entity-name {
+  font-weight: inherit;
+}
+
+/* Centers a single card on the page (login, waiting, errors), over two soft brand shapes. */
+.center-page {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--blue-space-4);
+  padding: var(--blue-space-6) var(--blue-space-4);
+}
+.center-page::before,
+.center-page::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  border-radius: 50%;
+  filter: blur(60px);
+  pointer-events: none;
+}
+.center-page::before {
+  width: 520px;
+  height: 520px;
+  top: -180px;
+  right: -140px;
+  background: var(--app-brand-ring);
+}
+.center-page::after {
+  width: 420px;
+  height: 420px;
+  bottom: -160px;
+  left: -120px;
+  background: var(--app-brand-glow);
+}
+
+.center-page > .blue-card {
+  width: 100%;
+  max-width: 440px;
+  box-shadow: var(--blue-shadow-lg);
+  animation: app-rise var(--app-duration-slow) var(--app-ease) backwards;
+}
+/* A thin brand bar along the top of the centered card. */
+.center-page > .blue-card {
+  position: relative;
+  overflow: hidden;
+}
+.center-page > .blue-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--app-gradient-brand);
+}
+.auth-title {
+  font-size: var(--blue-font-size-2xl);
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+}
+
+/* A waiting state: a soft ring keeps expanding from the icon. */
+.status-pulse {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--blue-color-blue-50);
+  color: var(--blue-color-brand-primary-active);
+}
+.status-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--app-brand-ring);
+  border-radius: inherit;
+  animation: app-pulse 2.4s var(--app-ease) infinite;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--blue-space-3);
+  margin-bottom: var(--blue-space-6);
+}
+.page-head__title {
+  font-size: var(--blue-font-size-2xl);
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+  overflow-wrap: anywhere;
+}
+
+/* A card-like surface. With --link it lifts on hover and a brand bar slides in along its top edge. */
+.tile {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-2);
+  padding: var(--blue-space-5);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-lg);
+  background: var(--blue-color-surface-default);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  box-shadow: var(--blue-shadow-sm);
+  transition:
+    transform var(--app-duration) var(--app-ease),
+    box-shadow var(--app-duration) var(--app-ease),
+    border-color var(--app-duration) var(--app-ease),
+    background-color var(--app-duration) var(--app-ease);
+}
+/*
+ * Anything that can be clicked shows the hand (owner, 2026-11-23): links, buttons, lists to pick from, check boxes
+ * and their labels; disabled ones the "not allowed" sign. Components can still set their own (grab, zoom-in).
+ */
+a[href],
+button,
+[role='button'],
+select,
+summary,
+label:has(> input:is([type='checkbox'], [type='radio'])),
+input:is([type='checkbox'], [type='radio'], [type='file'], [type='color']) {
+  cursor: pointer;
+}
+:is(button, select, input):disabled,
+[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
+.tile--link {
+  cursor: pointer;
+}
+.tile--link::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--app-gradient-brand);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--app-duration-slow) var(--app-ease);
+}
+.tile--link:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--blue-color-brand-primary) 35%, var(--blue-color-border-default));
+  box-shadow: var(--blue-shadow-lg);
+}
+.tile--link:hover::before,
+.tile--link:focus-visible::before {
+  transform: scaleX(1);
+}
+.tile--link:active {
+  transform: translateY(0) scale(0.99);
+  box-shadow: var(--blue-shadow-md);
+}
+.tile--link:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+}
+.tile--dashed {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--blue-color-neutral-400) 70%, var(--blue-color-border-default));
+  background: color-mix(in srgb, var(--blue-color-surface-default) 55%, transparent);
+  box-shadow: none;
+}
+.tile--dashed.tile--link::before {
+  display: none;
+}
+.tile--dashed.tile--link:hover {
+  border-color: var(--blue-color-brand-primary);
+  background: color-mix(in srgb, var(--blue-color-blue-50) 70%, transparent);
+  box-shadow: none;
+}
+.tile__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--blue-radius-md);
+  background: var(--blue-color-blue-50);
+  color: var(--blue-color-brand-primary-active);
+  font-weight: var(--blue-font-weight-bold);
+  letter-spacing: 0.02em;
+}
+.tile__icon--brand {
+  background: var(--app-gradient-brand);
+  color: var(--blue-color-text-on-brand);
+  box-shadow: var(--app-brand-shadow);
+}
+.tile__icon--muted {
+  background: var(--blue-color-surface-muted);
+  color: var(--blue-color-text-secondary);
+}
+.tile__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-2);
+  margin-top: auto;
+  padding-top: var(--blue-space-3);
+}
+.tile__arrow {
+  margin-left: auto;
+  color: var(--blue-color-text-secondary);
+  transition:
+    transform var(--app-duration) var(--app-ease),
+    color var(--app-duration) var(--app-ease);
+}
+.tile--link:hover .tile__arrow {
+  color: var(--blue-color-brand-primary-active);
+  transform: translateX(3px);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-4);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-3);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Page content rises in gently, one block after the other. */
+.app__main > * {
+  animation: app-rise var(--app-duration-slow) var(--app-ease) backwards;
+}
+.app__main > *:nth-child(2) {
+  animation-delay: 40ms;
+}
+.app__main > *:nth-child(3) {
+  animation-delay: 80ms;
+}
+.app__main > *:nth-child(n + 4) {
+  animation-delay: 120ms;
+}
+/* Tiles in a grid follow one after the other. */
+.tile-grid > * {
+  animation: app-rise var(--app-duration-slow) var(--app-ease) backwards;
+}
+.tile-grid > :nth-child(2) {
+  animation-delay: 50ms;
+}
+.tile-grid > :nth-child(3) {
+  animation-delay: 100ms;
+}
+.tile-grid > :nth-child(4) {
+  animation-delay: 150ms;
+}
+.tile-grid > :nth-child(n + 5) {
+  animation-delay: 200ms;
+}
+
+@keyframes app-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes app-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes app-pulse {
+  to {
+    opacity: 0;
+    transform: scale(1.5);
+  }
+}
+
+/* People who ask for less motion get none: no entrance, hover lift or shimmer. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* A row of filters above a list (Teams, Meetings): search first and widest, wraps on narrow screens. */
+.filter-bar {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--blue-space-3);
+  align-items: end;
+  padding: var(--blue-space-4);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-lg);
+  background: var(--blue-color-surface-default);
+  box-shadow: var(--blue-shadow-sm);
+}
+/* A list's longest choice (a long name) must not widen the page: each box shrinks to its column. */
+.filter-bar > * {
+  min-width: 0;
+}
+.filter-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--blue-space-3);
+  margin-top: calc(-1 * var(--blue-space-2));
+}
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--blue-color-brand-primary-active);
+  font: inherit;
+  font-weight: var(--blue-font-weight-semibold);
+  cursor: pointer;
+}
+.link-button:hover {
+  text-decoration: underline;
+}
+.link-button:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+  border-radius: var(--blue-radius-sm);
+}
+/* New results are on their way: the old ones stay, slightly faded, instead of a blank page. */
+.is-refreshing {
+  opacity: 0.55;
+  transition: opacity var(--app-duration) var(--app-ease);
+}
+@media (max-width: 600px) {
+  .filter-bar {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    padding: var(--blue-space-3);
+  }
+  .filter-bar__search {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Type-the-name confirmation (TypeNameDialog): the box is outlined in the error color, as the action is permanent. */
+.type-confirm .blue-input__field {
+  border-color: var(--blue-color-feedback-error);
+}
+
+/* The language switch (LanguageSwitch): "ID | EN", the one in use filled. */
+.language-switch {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-md);
+  background: var(--blue-color-surface-default);
+}
+.language-switch__item {
+  min-width: 36px;
+  padding: var(--blue-space-1) var(--blue-space-2);
+  border: none;
+  border-radius: var(--blue-radius-sm);
+  background: none;
+  color: var(--blue-color-text-secondary);
+  font: inherit;
+  font-size: var(--blue-font-size-sm);
+  font-weight: var(--blue-font-weight-bold);
+  line-height: 1.3;
+  cursor: pointer;
+  transition: background-color var(--app-duration-fast) var(--app-ease);
+}
+.language-switch__item:hover {
+  color: var(--blue-color-text-primary);
+}
+.language-switch__item:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 1px;
+}
+.language-switch__item[aria-pressed='true'] {
+  background: var(--blue-color-brand-primary-active);
+  color: var(--blue-color-text-on-brand);
+}
+
+/* A paged list (components/Paged.tsx): how many and Clear filters on the left, the pages on the right; the same
+   pages again below the list. On a phone the pages wrap under the count. */
+.paged__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--blue-space-2) var(--blue-space-4);
+}
+.paged__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--blue-space-2) var(--blue-space-3);
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-sm);
+}
+
+/* Back to top (components/BackToTop.tsx): a round button at the bottom right once a long page is scrolled down. */
+.back-to-top {
+  position: fixed;
+  right: var(--blue-space-6);
+  bottom: var(--blue-space-6);
+  z-index: 9;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--blue-space-1);
+  min-height: 44px;
+  padding: var(--blue-space-2) var(--blue-space-4);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-surface-default);
+  color: var(--blue-color-brand-primary-active);
+  font: inherit;
+  font-size: var(--blue-font-size-sm);
+  font-weight: var(--blue-font-weight-semibold);
+  box-shadow: var(--blue-shadow-lg);
+  cursor: pointer;
+  animation: app-fade var(--app-duration-fast) var(--app-ease);
+}
+.back-to-top:hover {
+  background: var(--blue-color-blue-50);
+}
+.back-to-top:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+}
+@media (max-width: 600px) {
+  .back-to-top {
+    right: var(--blue-space-4);
+    bottom: var(--blue-space-4);
+    width: 44px;
+    padding: 0;
+    justify-content: center;
+  }
+  .back-to-top__text {
+    display: none;
+  }
+}
+@media print {
+  .back-to-top {
+    display: none;
+  }
+}
