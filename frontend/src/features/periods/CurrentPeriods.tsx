@@ -1,4 +1,3 @@
-import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { BlueAlert, BlueCard, BlueSkeleton } from '../../components/blue';
@@ -18,16 +17,14 @@ export const CURRENT_PERIODS_PER_PAGE = 4;
  * Home: where each of my teams is in its year (owner, 2026-11-23): its current quarter (or other period), how far in,
  * and how many meetings and notes it holds so far; a click opens it. A period that starts within the next four weeks
  * shows too (owner, 2026-11-25: next month, for a team split into months), with when it starts. Periods with no
- * meetings are left out, and the card is hidden when none is left. Two to a row, four a page with pages above and
- * below when there are more
- * (owner, 2026-11-25; the page is in the address as ?quartersPage=N). A person is in a few teams, so all come at once
- * and the page is cut here.
+ * meetings are left out, and the card is hidden when none is left. Two to a row, four a page with pages above them
+ * when there are more (owner, 2026-11-25; not below too, as four fit on one screen; the page is in the address as
+ * ?quartersPage=N). A person is in a few teams, so all come at once and the page is cut here.
  */
 export function CurrentPeriods() {
   const { t } = useTranslation();
   const current = useCurrentPeriods();
   const { get, update } = useFilterParams();
-  const top = useRef<HTMLElement>(null);
   const code = current.error instanceof ApiFailure ? current.error.code : current.error ? 'unknown_error' : null;
   const today = todayWib();
   const teams = (current.data?.teams ?? []).filter((t) => t.period.meetingCount + t.period.cancelledCount > 0);
@@ -37,11 +34,7 @@ export function CurrentPeriods() {
   const lastPage = Math.max(1, Math.ceil(teams.length / CURRENT_PERIODS_PER_PAGE));
   const page = Math.min(lastPage, Math.max(1, Number.parseInt(get('quartersPage'), 10) || 1));
   const shown = teams.slice((page - 1) * CURRENT_PERIODS_PER_PAGE, page * CURRENT_PERIODS_PER_PAGE);
-  const goTo = (next: number) => {
-    update({ quartersPage: next > 1 ? String(next) : '' });
-    // From the pages below the list, back to its top.
-    if ((top.current?.getBoundingClientRect().top ?? 0) < 0) top.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-  };
+  const goTo = (next: number) => update({ quartersPage: next > 1 ? String(next) : '' });
 
   // "This quarter", or "This quarter / month" when teams split their years differently (each card names its own);
   // "This and next month" once one that is still to come shows. Capitalized: in Indonesian the noun comes first
@@ -52,7 +45,7 @@ export function CurrentPeriods() {
   );
 
   return (
-    <section ref={top} className="current-periods-section">
+    <section className="current-periods-section">
       <BlueCard
         header={
           <header className="blue-card__header row card-head">
@@ -75,7 +68,14 @@ export function CurrentPeriods() {
             ))}
           </div>
         ) : (
-          <Paged current={page} total={teams.length} pageSize={CURRENT_PERIODS_PER_PAGE} label={t('periods.current.pages')} onChange={goTo}>
+          <Paged
+            current={page}
+            total={teams.length}
+            pageSize={CURRENT_PERIODS_PER_PAGE}
+            label={t('periods.current.pages')}
+            onChange={goTo}
+            below={false}
+          >
             <ul className="current-periods">
               {shown.map(({ teamId, teamName, period }) => (
                 <li key={`${teamId}:${period.key}`}>

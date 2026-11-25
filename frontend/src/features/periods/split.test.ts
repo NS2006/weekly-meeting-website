@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   dayRange,
   describeSplit,
+  firstPeriods,
   labelParts,
   monthName,
   monthRange,
   periodFacts,
+  periodGroups,
   periodNoun,
   progressOf,
-  recentPeriods,
   splitChoices,
   yearPreview,
 } from './split';
@@ -49,20 +50,46 @@ describe('period words', () => {
 });
 
 describe('which periods the team page shows first', () => {
-  const list = (statuses: string[]) => statuses.map((status, i) => ({ status: status as 'ended' | 'current' | 'upcoming', i }));
+  // Calendar quarters of 2026 up to Q1 2027, Q4 2026 the current one.
+  const quartersTo2027 = ['2026-01-01', '2026-04-01', '2026-07-01', '2026-10-01', '2027-01-01'].map((start, i) => ({
+    start,
+    status: (i < 3 ? 'ended' : i === 3 ? 'current' : 'upcoming') as 'ended' | 'current' | 'upcoming',
+    i,
+  }));
+  const shownOn = (periods: typeof quartersTo2027, today: string) => firstPeriods(periods, today).shown.map((p) => p.i);
 
-  it('shows all of a few', () => {
-    expect(recentPeriods(list(['ended', 'current', 'upcoming']))).toEqual({ shown: list(['ended', 'current', 'upcoming']), hidden: 0 });
+  it('shows the current one, then the one before while the next is more than four weeks away', () => {
+    expect(firstPeriods(quartersTo2027, '2026-11-25')).toEqual({ shown: [quartersTo2027[3], quartersTo2027[2]], hidden: 3 });
+    // 1 Jan is the 29th day from 4 Dec.
+    expect(shownOn(quartersTo2027, '2026-12-04')).toEqual([3, 2]);
   });
 
-  it('shows two before the current one, the current one and the next', () => {
-    const { shown, hidden } = recentPeriods(list(['ended', 'ended', 'ended', 'ended', 'current', 'upcoming']));
-    expect(shown.map((p) => p.i)).toEqual([2, 3, 4, 5]);
-    expect(hidden).toBe(2);
+  it('shows the current one, then the next once the next starts within four weeks', () => {
+    expect(shownOn(quartersTo2027, '2026-12-05')).toEqual([3, 4]);
+    expect(shownOn(quartersTo2027, '2026-12-31')).toEqual([3, 4]);
   });
 
-  it('fills up with older ones when later ones are missing', () => {
-    expect(recentPeriods(list(['ended', 'ended', 'ended', 'ended', 'current'])).shown.map((p) => p.i)).toEqual([1, 2, 3, 4]);
+  it('shows the next one for a new team with none before', () => {
+    expect(shownOn(quartersTo2027.slice(3), '2026-11-25')).toEqual([3, 4]);
+  });
+
+  it('shows the last two without a current one', () => {
+    expect(shownOn(quartersTo2027.slice(0, 3), '2026-11-25')).toEqual([1, 2]);
+  });
+
+  it('groups all of them for the dialog: current, upcoming within four weeks, past newest first', () => {
+    const ids = (periods: typeof quartersTo2027) => periods.map((p) => p.i);
+    const far = periodGroups(quartersTo2027, '2026-11-25');
+    expect(far.current?.i).toBe(3);
+    expect(ids(far.upcoming)).toEqual([]);
+    expect(ids(far.past)).toEqual([2, 1, 0]);
+    expect(ids(periodGroups(quartersTo2027, '2026-12-05').upcoming)).toEqual([4]);
+    // The list itself is left as it was (oldest first).
+    expect(ids(quartersTo2027)).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it('groups a new team: no past', () => {
+    expect(periodGroups(quartersTo2027.slice(3), '2026-11-25').past).toEqual([]);
   });
 });
 

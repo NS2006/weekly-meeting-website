@@ -16,6 +16,8 @@ export interface StoredAttachment {
 export interface AttachmentsRepository {
   /** The note's image count if this user owns the note; null otherwise. Locks the note. */
   lockNoteForUpload(noteId: string, ownerId: string): Promise<{ images: number } | null>;
+  /** The same, without a lock: the quick check before a file is stored (the locked one follows). */
+  imagesOf(noteId: string, ownerId: string): Promise<{ images: number } | null>;
   create(noteId: string, image: StoredAttachment): Promise<string>;
   /** The pictures among `ids` that belong to notes of this user (others' and missing ids are left out). */
   ownedBy(ids: readonly string[], userId: string): Promise<OwnedAttachment[]>;
@@ -33,6 +35,15 @@ export function createAttachmentsRepository(db: Db): AttachmentsRepository {
       if (rows.length === 0) return null;
       const count = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM attachments WHERE note_id = $1', [noteId]);
       return { images: count.rows[0]?.n ?? 0 };
+    },
+
+    async imagesOf(noteId, ownerId) {
+      const { rows } = await db.query<{ images: number }>(
+        `SELECT (SELECT count(*)::int FROM attachments a WHERE a.note_id = n.id) AS images
+           FROM notes n WHERE n.id = $1 AND n.user_id = $2`,
+        [noteId, ownerId],
+      );
+      return rows[0] ?? null;
     },
 
     async create(noteId, image) {

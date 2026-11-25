@@ -29,7 +29,16 @@ const pageLoading = (
   </main>
 );
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: true } } });
+// A request the server answered (an error included) is not sent again by itself (stress test, 2026-11-25: when the
+// server was busy, three automatic retries per reader tripled its load); a dropped connection is tried twice more.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: true,
+      retry: (count, err) => !(err instanceof ApiFailure && err.status > 0) && count < 2,
+    },
+  },
+});
 
 type Place = 'guest' | 'inactive' | 'active';
 const HOME: Record<Place, string> = { guest: '/login', inactive: '/waiting', active: '/' };

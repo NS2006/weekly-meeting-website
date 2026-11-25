@@ -44,3 +44,16 @@ export function arrangeMeetings<T extends Pick<MeetingView, 'date'>>(meetings: r
     .sort((a, b) => a.m.date.localeCompare(b.m.date) || a.i - b.i)
     .map(({ m }) => m);
 }
+
+/**
+ * The period page's next meeting (owner, 2026-11-25: a way straight to it): the ones on the soonest day from today
+ * that are not cancelled, today's included, in their order. None once the period's last meeting has passed.
+ */
+export function nextMeetings<T extends Pick<MeetingView, 'date' | 'status'>>(meetings: readonly T[], today: string): T[] {
+  const ahead = arrangeMeetings(
+    meetings.filter((m) => m.status !== 'cancelled' && m.date >= today),
+    null,
+  );
+  const day = ahead[0]?.date;
+  return day === undefined ? [] : ahead.filter((m) => m.date === day);
+}

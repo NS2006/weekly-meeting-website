@@ -509,6 +509,15 @@ input:is([type='checkbox'], [type='radio'], [type='file'], [type='color']) {
   font-size: var(--blue-font-size-sm);
 }
 
+/* The end of a list loaded a page at a time (components/LoadOlder.tsx): an error if the last page failed, then the
+   button, on the left. */
+.load-older {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--blue-space-2);
+}
+
 /* Back to top (components/BackToTop.tsx): a round button at the bottom right once a long page is scrolled down. */
 .back-to-top {
   position: fixed;
@@ -534,6 +543,10 @@ input:is([type='checkbox'], [type='radio'], [type='file'], [type='color']) {
 .back-to-top:hover {
   background: var(--blue-color-blue-50);
 }
+/* While it shows, room under the page so its last line (a team's Leave team) scrolls clear of the button. */
+.app__main:has(.back-to-top) {
+  padding-bottom: calc(var(--blue-space-6) * 2 + 44px);
+}
 .back-to-top:focus-visible {
   outline: 2px solid var(--blue-color-border-focus);
   outline-offset: 2px;
@@ -548,6 +561,9 @@ input:is([type='checkbox'], [type='radio'], [type='file'], [type='color']) {
   }
   .back-to-top__text {
     display: none;
+  }
+  .app__main:has(.back-to-top) {
+    padding-bottom: calc(var(--blue-space-4) * 2 + 44px);
   }
 }
 @media print {

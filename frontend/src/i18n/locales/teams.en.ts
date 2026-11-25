@@ -232,5 +232,6 @@ export const teamsEn = {
     openOnBoard: "Open this note on the meeting's board",
     loadingUpdates: 'Loading updates',
     showOlder: 'Show older updates',
+    showNewer: 'Show newer updates',
   },
 } as const;

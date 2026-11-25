@@ -561,10 +561,11 @@ describeDb('meeting series and meetings (integration)', () => {
     const written = await json<{ note: { id: string; version: number } }>(await call(mo, 'POST', '/notes', { title: 'Week 48', meetingId: first.id }));
     await call(mo, 'PATCH', `/notes/${written.note.id}`, { content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Shipped it.' }] }] }, version: written.note.version });
     await call(lead, 'POST', '/notes', { meetingId: first.id }); // blank
-    const whole = await json<{ meetings: { id: string; date: string; people: { name: string; notes: { title: string; content: unknown }[] }[] }[] }>(
+    const whole = await json<{ rest: string[]; meetings: { id: string; date: string; people: { name: string; notes: { title: string; content: unknown }[] }[] }[] }>(
       await call(lead, 'GET', `/teams/${teamId}/periods/2026-10-3m/notes`),
     );
     expect(whole.meetings).toHaveLength(1);
+    expect(whole.rest).toEqual([]);
     expect(whole.meetings[0]).toMatchObject({ id: first.id, date: '2026-11-26' });
     expect(whole.meetings[0]?.people.map((p) => [p.name, p.notes.map((n) => n.title)])).toEqual([['Mo Quarter', ['Week 48']]]);
     expect(JSON.stringify(whole.meetings[0]?.people[0]?.notes[0]?.content)).toContain('Shipped it.');
@@ -576,24 +577,45 @@ describeDb('meeting series and meetings (integration)', () => {
       const more = await json<{ note: { id: string; version: number } }>(await call(mo, 'POST', '/notes', { title: 'Later', meetingId: meeting.id }));
       await call(mo, 'PATCH', `/notes/${more.note.id}`, { content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'More.' }] }] }, version: more.note.version });
     }
-    type Picked = { index: { date: string; people: { name: string }[] }[]; meetings: { date: string }[] };
+    type Picked = {
+      index?: { date: string; people: { userId: string; name: string; noteCount: number }[] }[];
+      meetings: { id: string; date: string; people: { userId: string }[] }[];
+      rest: string[];
+    };
     const picked = async (query: string) => json<Picked>(await call(lead, 'GET', `/teams/${teamId}/periods/2026-10-3m/notes${query}`));
     const latest = await picked('?latest=2');
-    expect(latest.index.map((m) => m.date)).toEqual(['2026-11-26', '2026-12-03', '2026-12-10']);
-    expect(latest.index[0]?.people).toEqual([{ userId: mo.id, name: 'Mo Quarter' }]);
+    expect(latest.index?.map((m) => m.date)).toEqual(['2026-11-26', '2026-12-03', '2026-12-10']);
+    expect(latest.index?.[0]?.people).toEqual([{ userId: mo.id, name: 'Mo Quarter', noteCount: 1 }]);
     expect(JSON.stringify(latest.index)).not.toContain('Shipped it.');
     expect(latest.meetings.map((m) => m.date)).toEqual(['2026-12-03', '2026-12-10']);
+    expect(latest.rest).toEqual([]); // a few notes: everything in one part
     expect((await picked(`?meetings=${first.id}`)).meetings.map((m) => m.date)).toEqual(['2026-11-26']);
     expect((await picked('?meetings=all')).meetings).toHaveLength(3);
     expect((await picked('')).meetings).toHaveLength(3); // nothing asked: all of them
-    for (const bad of ['?meetings=abc', '?meetings=', '?latest=0', '?latest=51', '?extra=1']) {
+    // Only some people's notes (stress test, 2026-11-25: a person picked loads only their notes); the index stays whole.
+    const onlyLead = await picked(`?meetings=all&people=${lead.id}`);
+    expect(onlyLead.meetings).toEqual([]);
+    expect(onlyLead.index).toHaveLength(3);
+    expect((await picked(`?meetings=all&people=${mo.id}`)).meetings.map((m) => m.people.map((p) => p.userId))).toEqual([[mo.id], [mo.id], [mo.id]]);
+    // A later part leaves the index out.
+    const later = await picked(`?meetings=${first.id}&more=1`);
+    expect(later.index).toBeUndefined();
+    expect(later.meetings.map((m) => m.id)).toEqual([first.id]);
+    for (const bad of ['?meetings=abc', '?meetings=', '?latest=0', '?latest=51', '?extra=1', '?people=abc', '?people=', '?more=2']) {
       expect((await call(lead, 'GET', `/teams/${teamId}/periods/2026-10-3m/notes${bad}`)).status).toBe(400);
     }
 
+    // People come in the meeting's board order: the leader first while no order is set, then the speaking order.
+    await call(lead, 'POST', '/notes', { title: 'Lead week', meetingId: first.id });
+    const order = async () => (await picked(`?meetings=${first.id}`)).meetings[0]?.people.map((p) => p.userId);
+    expect(await order()).toEqual([lead.id, mo.id]);
+    expect((await call(lead, 'PUT', `/meetings/${first.id}/speakers`, { userIds: [mo.id, lead.id] })).status).toBe(200);
+    expect(await order()).toEqual([mo.id, lead.id]);
+
     // Home: the current period of each of my teams.
     const current = await json<{ teams: { teamId: string; period: Summary }[] }>(await call(mo, 'GET', '/periods/current'));
-    // (3 notes: the one above and the two written for the "only the meetings asked for" checks.)
-    expect(current.teams.find((t) => t.teamId === teamId)?.period).toMatchObject({ label: 'Q4 2026', meetingCount: 4, noteCount: 3 });
+    // (4 notes: the one above, the two written for the "only the meetings asked for" checks and the leader's.)
+    expect(current.teams.find((t) => t.teamId === teamId)?.period).toMatchObject({ label: 'Q4 2026', meetingCount: 4, noteCount: 4 });
   });
 
   it("shows Home each team's current period and the ones that start in the next four weeks (owner, 2026-11-25)", async () => {

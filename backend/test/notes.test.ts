@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../src/app.ts';
 import { createPool, withTransactions } from '../src/database/pool.ts';
-import { createLocalStorage } from '../src/modules/attachments/storage.ts';
+import { createLocalStorage, type ObjectStorage } from '../src/modules/attachments/storage.ts';
 import { serve, sessionCookie, silentLogger, testAuth } from './helpers.ts';
 
 // Notes, their project sections and images against the real database (npm test loads backend/.env); skipped
@@ -52,11 +52,24 @@ describeDb('notes, project sections and images (integration)', () => {
   };
   let dir = '';
   let app: Awaited<ReturnType<typeof serve>>;
+  // Called with each storage key just before a file is stored or copied (a test looks at the database then).
+  let beforeStorage: ((key: string) => Promise<void>) | null = null;
+  const watched = (storage: ObjectStorage): ObjectStorage => ({
+    ...storage,
+    put: async (key, data, type) => {
+      await beforeStorage?.(key);
+      return storage.put(key, data, type);
+    },
+    copy: async (from, to) => {
+      await beforeStorage?.(to);
+      return storage.copy(from, to);
+    },
+  });
 
   beforeAll(async () => {
     await cleanup();
     dir = await mkdtemp(path.join(os.tmpdir(), 'wm-notes-'));
-    app = await serve(createApp({ db, logger: silentLogger, auth: testAuth(), storage: createLocalStorage(dir) }));
+    app = await serve(createApp({ db, logger: silentLogger, auth: testAuth(), storage: watched(createLocalStorage(dir)) }));
   });
   afterAll(async () => {
     await app.close();
@@ -156,6 +169,10 @@ describeDb('notes, project sections and images (integration)', () => {
 
     const forPayments = await updates(owner, payments);
     expect(forPayments.updates.map((u) => [u.noteTitle, u.position])).toEqual([['Week 49', 0], ['Week 48', 1]]);
+    // Oldest first, to review from the start; anything else is refused.
+    const fromStart = (await (await call(owner, 'GET', `/projects/${payments}/updates?order=oldest`)).json()) as { updates: Update[] };
+    expect(fromStart.updates.map((u) => u.noteTitle)).toEqual(['Week 48', 'Week 49']);
+    expect((await call(owner, 'GET', `/projects/${payments}/updates?order=sideways`)).status).toBe(400);
     expect(forPayments.updates[1]?.content).toEqual(doc(para('Fixed the retry bug.'), para('Next: refunds.')));
     const forCheckout = await updates(owner, checkout);
     expect(forCheckout.updates.map((u) => [u.noteTitle, u.position])).toEqual([['Week 48', 0], ['Week 48', 2]]);
@@ -366,6 +383,10 @@ describeDb('notes, project sections and images (integration)', () => {
     expect(second).toMatchObject({ total: 3, hasMore: false });
     expect(second.notes.map((n) => n.title)).toEqual(['Week 1 (edited)']);
     expect(await list('?offset=30')).toEqual({ notes: [], hasMore: false, total: 3 });
+    // The page and the count come from one pass (stress test, 2026-11-25), in any order and with any filter.
+    expect(await list('?sort=edited&limit=1&offset=1')).toMatchObject({ notes: [{ title: 'Week 3' }], total: 3, hasMore: true });
+    expect(await list(`?q=work&project=${beta}&limit=1`)).toMatchObject({ total: 1, hasMore: false });
+    expect(await list('?from=2026-11-02')).toEqual({ notes: [], hasMore: false, total: 0 });
 
     for (const bad of ['?sort=title', '?from=2026-11-02&to=2026-11-01', '?from=2026-02-30', '?project=abc', '?team=abc', '?shared=maybe', '?limit=0', '?limit=51']) {
       const res = await call(owner, 'GET', `/notes${bad}`);
@@ -466,5 +487,84 @@ describeDb('notes, project sections and images (integration)', () => {
     const c = await picture(owner, spare.id);
     const d = await picture(owner, spare.id);
     expect(await code(await copy(owner, into.id, [c.id, d.id]))).toBe('too_many_images');
+  });
+
+  it('stores and copies picture files with no lock held on the note, and drops a file whose note went meanwhile (stress-test review)', async () => {
+    const owner = await person('Lock Watcher');
+    const from = await newNote(owner);
+    const into = await newNote(owner);
+    const noteOf = (key: string) => key.split('/')[1] ?? '';
+    // While the file is stored, someone else can lock the note (an autosave): no transaction holds it.
+    const seen: string[] = [];
+    beforeStorage = async (key) => {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('SELECT 1 FROM notes WHERE id = $1 FOR UPDATE NOWAIT', [noteOf(key)]);
+        seen.push('free');
+      } catch (err) {
+        seen.push((err as { code?: string }).code === '55P03' ? 'locked' : 'error');
+      } finally {
+        await client.query('ROLLBACK');
+        client.release();
+      }
+    };
+    try {
+      const uploaded = await upload(owner, from.id, PNG);
+      expect(uploaded.status).toBe(201);
+      const { attachment } = (await uploaded.json()) as { attachment: { id: string } };
+      expect((await call(owner, 'POST', `/notes/${into.id}/attachments/copy`, { attachmentIds: [attachment.id] })).status).toBe(200);
+      expect(seen).toEqual(['free', 'free']);
+
+      // The note is deleted while its picture is being stored: no row is added, and the file goes again.
+      const gone = await newNote(owner);
+      const before = await files();
+      beforeStorage = async (key) => {
+        await pool.query('DELETE FROM notes WHERE id = $1', [noteOf(key)]);
+      };
+      expect(await code(await upload(owner, gone.id, PNG))).toBe('not_found');
+      expect(await files()).toBe(before);
+      expect((await pool.query('SELECT 1 FROM attachments WHERE note_id = $1', [gone.id])).rows).toHaveLength(0);
+    } finally {
+      beforeStorage = null;
+    }
+  });
+
+  it("rewrites a note's project parts only when they changed, in one statement (stress-test review)", async () => {
+    const owner = await person('Part Keeper');
+    const alpha = await project(owner, 'Alpha parts');
+    const beta = await project(owner, 'Beta parts');
+    const note = await newNote(owner);
+    // xmin is the transaction that wrote a row: unchanged means the row was not rewritten.
+    const rows = async () =>
+      (await pool.query<{ xmin: string; position: number; text: string }>(
+        'SELECT xmin::text AS xmin, position, content_text AS text FROM note_sections WHERE note_id = $1 ORDER BY position',
+        [note.id],
+      )).rows;
+    let version = note.version;
+    const write = async (body: unknown) => {
+      const res = await save(owner, note.id, { content: body, version });
+      expect(res.status).toBe(200);
+      version = ((await res.json()) as { note: { version: number } }).note.version;
+    };
+
+    await write(doc(para('General'), section(alpha, para('Shipped')), section(beta, para('Fixed'))));
+    const first = await rows();
+    expect(first.map((r) => [r.position, r.text])).toEqual([[0, 'Shipped'], [1, 'Fixed']]);
+
+    // Only the general text changes: the parts stay as stored.
+    await write(doc(para('General, edited'), section(alpha, para('Shipped')), section(beta, para('Fixed'))));
+    expect(await rows()).toEqual(first);
+
+    // A part changes: the parts are written again.
+    await write(doc(para('General, edited'), section(alpha, para('Shipped twice')), section(beta, para('Fixed'))));
+    const second = await rows();
+    expect(second.map((r) => r.text)).toEqual(['Shipped twice', 'Fixed']);
+    expect(second[0]?.xmin).not.toBe(first[0]?.xmin);
+
+    // The parts swap places: written again, in their new order.
+    await write(doc(para('General, edited'), section(beta, para('Fixed')), section(alpha, para('Shipped twice'))));
+    expect((await rows()).map((r) => r.text)).toEqual(['Fixed', 'Shipped twice']);
+    expect((await updates(owner, alpha)).updates.map((u) => u.position)).toEqual([1]);
   });
 });

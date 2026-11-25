@@ -13,7 +13,7 @@ function monthFormat(language: Language): Intl.DateTimeFormat {
 }
 
 /**
- * Items in order (newest first), grouped by the month of `dateOf(item)` in Indonesia time: "November 2026", or in
+ * Items in order (newest or oldest first), grouped by the month of `dateOf(item)` in Indonesia time: "November 2026", or in
  * Indonesian "Agustus 2026".
  */
 export function groupByMonth<T>(

@@ -115,6 +115,11 @@ export const periodsEn = {
     showMonth: 'Show a month',
     all: 'All',
     meetings: 'Meetings',
+    // Above the meetings: the next one, or today's (nextMeetings).
+    todayTitle_one: "Today's meeting",
+    todayTitle_other: "Today's meetings",
+    nextTitle_one: 'Next meeting',
+    nextTitle_other: 'Next meetings',
   },
   reader: {
     personCount_one: '{{count}} person',
@@ -133,6 +138,11 @@ export const periodsEn = {
     showAll: 'Show all',
     summary: '{{selection}}. Each meeting in its speaking order; Save as PDF or Word keeps what is shown.',
     latestHint: 'The latest {{count}} meetings load first, to open quickly; “Show all” loads every one.',
+    partial: '{{loaded}} of {{total}} meetings loaded so far; the next ones load as you scroll down.',
+    loadMore: 'Load more notes',
+    loadingMore: 'Loading more notes…',
+    loadMoreFailed: 'The next notes could not be loaded.',
+    retry: 'Try again',
     noNotesTitle: 'No notes for this choice',
     noNotesBody: 'Pick at least one meeting and one person who wrote on it, or show everything again.',
     navLabel: 'Meetings in {{label}}',
@@ -146,6 +156,7 @@ export const periodsEn = {
     noProject: 'No project',
     // The messages on screen around saving; the file itself is always in English.
     save: {
+      gettingNotes: 'Getting every note first: {{done}} of {{total}} meetings…',
       pdf: {
         button: 'Save as PDF',
         title: 'Downloads a PDF of what is shown',
@@ -193,8 +204,15 @@ export const periodsEn = {
     change: 'Change split',
     about: '{{split}}. Each {{noun}} keeps its meetings and notes together; open one to see its meetings or read all its notes.',
     leaderSets: 'The team leader sets how the year is split.',
-    showRecent: 'Show recent {{nouns}} only',
     showAll: 'Show all {{total}} {{nouns}}',
+  },
+  // "Show all" on the team page (PeriodListDialog).
+  all: {
+    title: 'All {{nouns}}',
+    current: 'Current',
+    upcoming: 'Upcoming',
+    past: 'Past ({{count}})',
+    pages: 'Pages of past {{nouns}}',
   },
   page: {
     team: 'Team',

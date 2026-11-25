@@ -5,7 +5,12 @@ import { PeriodParamsSchema } from '../meetings/types.ts';
 export { PeriodParamsSchema };
 export const PeriodProjectParamsSchema = PeriodParamsSchema.extend({ projectId: idSchema }).strict();
 
-export const TeamProjectUpdatesQuerySchema = z.object({ offset: z.coerce.number().int().min(0).max(100_000).default(0) }).strict();
+export const TeamProjectUpdatesQuerySchema = z
+  .object({
+    offset: z.coerce.number().int().min(0).max(100_000).default(0),
+    order: z.enum(['newest', 'oldest']).default('newest'),
+  })
+  .strict();
 
 /** The most projects a period's board gets at once (a team's few months: far fewer in practice). */
 export const BOARD_LIMIT = 1000;

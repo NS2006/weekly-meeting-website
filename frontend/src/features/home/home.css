@@ -30,6 +30,10 @@
   letter-spacing: -0.015em;
   overflow-wrap: anywhere;
 }
+/* Room between Home's sections (owner, 2026-11-25), as below the hero. */
+.current-periods-section {
+  margin-bottom: var(--blue-space-6);
+}
 @media (max-width: 600px) {
   .home-hero {
     padding: var(--blue-space-6) var(--blue-space-5);

@@ -3,11 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 import { BlueAlert, BlueButton, BlueEmptyState, BlueSkeleton } from '../../components/blue';
 import { NotesIcon } from '../../components/icons';
+import { LoadOlder } from '../../components/LoadOlder';
 import { ApiFailure } from '../../services/api';
 import { formatDate, relativeDate } from '../../utils/dates';
 import { errorLabel } from '../../utils/errorLabels';
 import { groupByMonth } from './months';
 import { NoteContentView } from './NoteContentView';
+import { UpdateOrderSwitch, useUpdateOrder } from './UpdateOrder';
 import { useCreateNote, useProjectUpdates } from './useNotes';
 import './notes.css';
 
@@ -23,12 +25,15 @@ const PencilIcon = () => (
  * The project's updates (FR-12): every part of my notes tagged with this project, newest note first, shown read-only
  * with a link to its note. "Edit" (owner, 2026-11-25; and the note's title) opens that note at this update's section,
  * lit for a moment; an archived project is read-only, so it has no Edit. "Write an update" opens a new note that
- * already has this project's section.
+ * already has this project's section. Older updates load by themselves as the end of the list comes near, and
+ * updates far off screen are not drawn (owner, 2026-11-25, like the quarter reader). Newest first, or oldest first
+ * (`UpdateOrder`).
  */
 export function ProjectUpdates({ project }: { project: ProjectDetail }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const updates = useProjectUpdates(project.id);
+  const [order, setOrder] = useUpdateOrder();
+  const updates = useProjectUpdates(project.id, order);
   const create = useCreateNote();
   const archived = project.status === 'archived';
   const list = updates.data?.pages.flatMap((page) => page.updates) ?? [];
@@ -46,6 +51,7 @@ export function ProjectUpdates({ project }: { project: ProjectDetail }) {
         <h2 id="updates-heading" className="notes-panel__title">
           {t('notes.updates.title')} <span className="notes-panel__count">{project.updateCount}</span>
         </h2>
+        {project.updateCount > 1 ? <UpdateOrderSwitch order={order} onChange={setOrder} /> : null}
         {archived ? null : (
           <BlueButton variant="primary" loading={create.isPending} onClick={write}>
             {t('notes.updates.write')}
@@ -64,7 +70,7 @@ export function ProjectUpdates({ project }: { project: ProjectDetail }) {
             </div>
           ))}
         </div>
-      ) : updates.isError ? (
+      ) : updates.isError && !updates.data ? (
         <BlueAlert variant="error">{errorLabel(codeOf(updates.error) ?? 'unknown_error')}</BlueAlert>
       ) : list.length === 0 ? (
         <BlueEmptyState icon={<NotesIcon size={26} />} title={t('notes.updates.none')}>
@@ -117,11 +123,14 @@ export function ProjectUpdates({ project }: { project: ProjectDetail }) {
               </ol>
             </section>
           ))}
-          {updates.hasNextPage ? (
-            <BlueButton variant="secondary" loading={updates.isFetchingNextPage} onClick={() => void updates.fetchNextPage()}>
-              {t('notes.updates.showOlder')}
-            </BlueButton>
-          ) : null}
+          <LoadOlder
+            hasMore={updates.hasNextPage}
+            loading={updates.isFetchingNextPage}
+            failed={updates.isFetchNextPageError}
+            errorText={errorLabel(codeOf(updates.error) ?? 'unknown_error')}
+            label={t(order === 'oldest' ? 'notes.updates.showNewer' : 'notes.updates.showOlder')}
+            onMore={() => updates.fetchNextPage()}
+          />
         </div>
       )}
     </section>

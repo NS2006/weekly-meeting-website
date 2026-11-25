@@ -7,7 +7,7 @@ import { CalendarIcon } from '../../components/icons';
 import { formatFullDay, relativeDay, todayWib } from '../../utils/dates';
 import { groupByMonth, type MeetingGroup } from '../meetings/grouping';
 import { MeetingRow } from '../meetings/MeetingParts';
-import { arrangeMeetings, monthsOf } from './meetingOrder';
+import { arrangeMeetings, monthsOf, nextMeetings } from './meetingOrder';
 import { ProjectBoard } from '../team-projects/ProjectBoard';
 import { PeriodProgress, PeriodStatusBadge, PeriodTile, type PeriodTab } from './PeriodParts';
 import { PeriodReader } from './PeriodReader';
@@ -88,7 +88,10 @@ export function PeriodDetailView({ period, tab, onTab }: { period: PeriodDetail;
   );
 }
 
-/** The period's meetings by month, first to last, each with how many notes it has. */
+/**
+ * The period's meetings by month, first to last, each with how many notes it has; above them the next one (today's,
+ * or the soonest to come), so it is one click away.
+ */
 function PeriodMeetings({ period, today }: { period: PeriodDetail; today: string }) {
   const { t } = useTranslation();
   const location = useLocation();
@@ -110,7 +113,29 @@ function PeriodMeetings({ period, today }: { period: PeriodDetail; today: string
       </BlueCard>
     );
   }
-  return <ArrangedMeetings period={period} today={today} from={from} />;
+  const next = nextMeetings(period.meetings, today);
+  return (
+    <div className="stack">
+      {next.length > 0 ? (
+        <BlueCard
+          header={
+            <header className="blue-card__header row card-head">
+              <span>
+                {t(next[0]?.date === today ? 'periods.detail.todayTitle' : 'periods.detail.nextTitle', { count: next.length })}
+              </span>
+            </header>
+          }
+        >
+          <ul className="meeting-list">
+            {next.map((m) => (
+              <MeetingRow key={m.id} meeting={m} today={today} showNotes from={from} />
+            ))}
+          </ul>
+        </BlueCard>
+      ) : null}
+      <ArrangedMeetings period={period} today={today} from={from} />
+    </div>
+  );
 }
 
 /**

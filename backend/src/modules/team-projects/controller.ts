@@ -1,4 +1,4 @@
-import type { PeriodProjectsResponse, TeamProjectUpdatesResponse } from '@weekly-meeting/shared';
+import type { PeriodProjectsResponse, TeamProjectUpdatesResponse, UpdateOrder } from '@weekly-meeting/shared';
 import type { Response } from 'express';
 import { authOf } from '../../middleware/authenticate.ts';
 import { asyncHandler } from '../../utils/asyncHandler.ts';
@@ -15,8 +15,8 @@ export function createTeamProjectsController(service: TeamProjectsService) {
 
     updates: asyncHandler(async (_req, res) => {
       const { id, key, projectId } = params(res);
-      const { offset } = res.locals.validated.query as { offset: number };
-      res.json((await service.updates(authOf(res), id, key, projectId, offset)) satisfies TeamProjectUpdatesResponse);
+      const { offset, order } = res.locals.validated.query as { offset: number; order: UpdateOrder };
+      res.json((await service.updates(authOf(res), id, key, projectId, offset, order)) satisfies TeamProjectUpdatesResponse);
     }),
   };
 }

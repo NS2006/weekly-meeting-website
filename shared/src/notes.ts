@@ -146,7 +146,16 @@ export interface ProjectUpdate {
   noteUpdatedAt: string;
 }
 
-/** GET /api/projects/:id/updates: the sections tagged with the project, newest note first, in pages. */
+/** A project's updates newest note first (the default) or oldest first (owner, 2026-11-25: to review from the start). */
+export type UpdateOrder = 'newest' | 'oldest';
+
+/** GET /api/projects/:id/updates query. */
+export interface ProjectUpdatesQuery {
+  offset?: number;
+  order?: UpdateOrder;
+}
+
+/** GET /api/projects/:id/updates: the sections tagged with the project, in the order asked for, in pages. */
 export interface ProjectUpdatesResponse {
   updates: ProjectUpdate[];
   hasMore: boolean;

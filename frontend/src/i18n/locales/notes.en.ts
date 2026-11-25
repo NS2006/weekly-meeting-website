@@ -306,5 +306,10 @@ export const notesEn = {
     edit: 'Edit',
     editLabel: 'Edit this update in {{title}}',
     showOlder: 'Show older updates',
+    showNewer: 'Show newer updates',
+    // Newest first, or oldest first to review the project from its start (owner, 2026-11-25).
+    order: 'Order of updates',
+    newestFirst: 'Newest first',
+    oldestFirst: 'Oldest first',
   },
 } as const;

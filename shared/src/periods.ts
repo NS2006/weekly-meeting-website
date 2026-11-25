@@ -84,31 +84,41 @@ export interface PeriodPersonNotes {
   notes: PeriodNote[];
 }
 
-/**
- * A meeting of the period that has notes, without them (owner, 2026-11-25: the reader's pickers need every meeting and
- * person, but only the meetings picked are loaded in full).
- */
-export interface PeriodMeetingIndex {
+/** A meeting of the period, as the reader names it. */
+export interface PeriodMeetingHead {
   id: string;
   date: string;
   title: string | null;
   seriesName: string;
   status: MeetingStatus;
-  /** In the meeting's board order (its speaking order); only people with notes. */
-  people: { userId: string; name: string }[];
 }
 
-export interface PeriodMeetingNotes extends PeriodMeetingIndex {
+/**
+ * A meeting of the period that has notes, without them (owner, 2026-11-25: the reader's pickers need every meeting and
+ * person, but only the meetings picked are loaded in full). The counts let the reader split its loading into the same
+ * parts the server sends, so one part can load on its own (stress test, 2026-11-25).
+ */
+export interface PeriodMeetingIndex extends PeriodMeetingHead {
+  /** In the meeting's board order (its speaking order); only people with notes, with how many. */
+  people: { userId: string; name: string; noteCount: number }[];
+}
+
+export interface PeriodMeetingNotes extends PeriodMeetingHead {
   people: PeriodPersonNotes[];
 }
 
 /**
  * GET /api/teams/:id/periods/:key/notes query: which meetings to send in full. `meetings`: `all`, or ids separated by
- * commas; `latest`: the last N meetings with notes (the reader's default is 3). Neither: all of them.
+ * commas; `latest`: the last N meetings with notes (the reader's default is 3). Neither: all of them. `people`: only
+ * these people's notes (user ids separated by commas). They come a part at a time (stress test, 2026-11-25): a
+ * response holds whole meetings up to about 100 notes (always at least one meeting) and names the rest in `rest`,
+ * asked for next with `meetings=<rest>&more=1` (a later part: no index).
  */
 export interface PeriodNotesQuery {
   meetings?: string;
   latest?: number;
+  people?: string;
+  more?: 1;
 }
 
 /**
@@ -116,10 +126,12 @@ export interface PeriodNotesQuery {
  * every meeting that has notes, by day, and on each its people and their notes in full.
  */
 export interface PeriodNotesResponse {
-  /** Every meeting of the period that has notes, by day, with who wrote (no note text). */
-  index: PeriodMeetingIndex[];
-  /** The meetings asked for, by day, with their notes in full. */
+  /** Every meeting of the period that has notes, by day, with who wrote (no note text). Left out of a later part. */
+  index?: PeriodMeetingIndex[];
+  /** The first of the meetings asked for, by day, with their notes in full (about 100 notes, at least one meeting). */
   meetings: PeriodMeetingNotes[];
+  /** The meetings asked for that come in a later part, by day (empty when this part is the last). */
+  rest: string[];
 }
 
 /**

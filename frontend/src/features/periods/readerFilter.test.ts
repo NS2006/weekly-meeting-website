@@ -7,12 +7,15 @@ import {
   isStale,
   matchingOptions,
   meetingsParam,
+  nextPart,
   notesRequest,
   parseSelection,
   peopleOf,
   pickedMeetingsOf,
+  readingPlan,
   selectionParam,
   showsLatest,
+  splitParts,
 } from './readerFilter';
 
 const doc = { type: 'doc' as const, content: [{ type: 'paragraph' }] };
@@ -53,6 +56,20 @@ describe('reading a selection of a period', () => {
     // Everything unticked stays nothing (the reader says so), not all.
     expect(selectionParam([], ids)).toBe('none');
     expect(parseSelection('none', ids)).toEqual([]);
+  });
+
+  it('splits a reading into the parts the server sends: whole meetings up to 100 notes, at least one each', () => {
+    const m = (id: string, notes: number) => ({ id, notes });
+    expect(splitParts([m('a', 40), m('b', 50), m('c', 20), m('d', 5)])).toEqual([['a', 'b'], ['c', 'd']]);
+    expect(splitParts([m('a', 60), m('b', 40), m('c', 1)])).toEqual([['a', 'b'], ['c']]);
+    expect(splitParts([m('a', 151), m('b', 3)])).toEqual([['a'], ['b']]);
+    expect(splitParts([])).toEqual([]);
+  });
+
+  it('plans the whole reading from the index: the meetings chosen with the people chosen, loaded or not', () => {
+    expect(readingPlan(meetings, null, null)).toEqual(meetings);
+    expect(readingPlan(meetings, ['m1', 'm2'], ['u2']).map((m) => [m.id, m.people.map((p) => p.userId)])).toEqual([['m1', ['u2']]]);
+    expect(readingPlan(meetings, [], null)).toEqual([]);
   });
 
   it('keeps the chosen meetings with the chosen people, in order, and drops meetings left empty', () => {
@@ -126,6 +143,16 @@ describe('the reader starts with the latest 3 meetings (owner, 2026-11-25)', () 
     expect(notesRequest(`${id(1)},${id(2)}`)).toEqual({ meetings: `${id(1)},${id(2)}` });
     expect(notesRequest('none')).toEqual({ latest: 3 }); // nothing to read: the cheap request
     expect(notesRequest('<script>')).toEqual({ latest: 3 }); // unreadable
+  });
+
+  it('asks for the people picked only, and for the next part by the meetings the server named (stress test)', () => {
+    const who = `${id(7)},${id(8)}`;
+    expect(notesRequest('all', who)).toEqual({ meetings: 'all', people: who });
+    expect(notesRequest('', who)).toEqual({ latest: 3, people: who });
+    expect(notesRequest('all', 'none')).toEqual({ meetings: 'all' }); // nobody picked: nothing to narrow
+    expect(notesRequest('all', '<script>')).toEqual({ meetings: 'all' });
+    expect(nextPart({ latest: 3, people: who }, [id(4), id(5)])).toEqual({ meetings: `${id(4)},${id(5)}`, people: who, more: 1 });
+    expect(nextPart({ meetings: 'all' }, [id(5)])).toEqual({ meetings: id(5), more: 1 });
   });
 
   it('picks the latest 3 at the start, every meeting for "all", or the ones listed', () => {

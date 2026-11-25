@@ -7,8 +7,9 @@
 // - Tables and columns are snake_case in the database (@@map / @map); models and fields are named for TypeScript.
 // - Ids are random UUIDs (gen_random_uuid()), so ids in addresses cannot be guessed or counted. Timestamps are timestamptz. Meeting dates are plain DATE in Indonesia time (UTC+7).
 // - updated_at is set by the backend's UPDATE statement (no Prisma Client, so no @updatedAt).
-// - Hand-written SQL that Prisma cannot express lives at the end of the migration file:
-//   the CHECK on meeting_series.days_of_week and the GIN full-text index on notes.
+// - Hand-written SQL that Prisma cannot express lives at the end of the migration file: the CHECK on
+//   meeting_series.days_of_week, the partial and expression indexes (one leader per team, project names ignoring case,
+//   blank notes: notes_blank_index). The full-text index on notes was dropped there too (never used).
 //
 // Design: "PRD & RFC Weekly Meeting Notes.md", section 10. ERD: "Database Design/Weekly Meeting ERD.png".
 
@@ -167,7 +168,7 @@ model Project {
 }
 
 /// content is the editor's JSON document (source of truth), never HTML.
-/// content_text is plain text extracted by the backend on every save, for full-text search.
+/// content_text is plain text extracted by the backend on every save, for search and snippets.
 /// version is bumped on every save: UPDATE ... WHERE id = $1 AND version = $2 (optimistic locking).
 /// A person's own document (for example "Week 48"). Parts of it are project sections (note_sections); the rest is
 /// general text that stays in the note.

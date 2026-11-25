@@ -37,6 +37,7 @@ import {
   type MeetingDayRow,
   type MeetingRow,
   type MeetingsRepository,
+  type PeriodNoteRow,
   type SeriesRow,
 } from './repository.ts';
 import {
@@ -49,6 +50,7 @@ import {
   previousPeriod,
   type Period,
 } from './periods.ts';
+import { readerPart } from './readerParts.ts';
 import {
   HOME_DAYS,
   HORIZON_DAYS,
@@ -56,6 +58,7 @@ import {
   MOVE_MAX_DAYS,
   MY_UPCOMING_LIMIT,
   PAST_PAGE_SIZE,
+  READER_NOTES_PER_PART,
   SCHEDULE_WINDOW,
   type PeriodNotesPick,
 } from './types.ts';
@@ -155,9 +158,6 @@ function periodRange(days: readonly MeetingDayRow[], split: YearSplit, today: st
   const last = lastDay && lastDay > afterCurrent.end ? periodOf(lastDay, split) : afterCurrent;
   return periodsFrom(first, last, split);
 }
-
-/** A note that nothing was written in yet (no title, text or image): left out of the whole-period view. */
-const isBlank = (card: { title: string; snippet: string; imageCount: number }) => !card.title && !card.snippet && card.imageCount === 0;
 
 /** The same ids, each once, in any order. */
 function sameIds(a: readonly string[], b: readonly string[]): boolean {
@@ -417,55 +417,82 @@ export function createMeetingsService(deps: { db: Database; logger: Logger; now?
     },
 
     async periodNotes(actor, teamId, key, pick = {}) {
-      const { team, period, day } = await findPeriod(teamId, actor.user.id, key);
-      const rows = (await meetings.listForTeamBetween(teamId, day, period.start, period.end)).filter((m) => m.noteCount > 0);
-      // Each meeting in its board order (speaking order, then the leader, then by name); blank notes left out.
-      const boards = await Promise.all(
-        rows.map(async (m) => ({
-          meeting: m,
-          people: (await columnsOf(db, team.id, m.id, actor.user.id))
-            .map((c) => ({ userId: c.userId, name: c.name, notes: c.notes.filter((n) => !isBlank(n)) }))
-            .filter((c) => c.notes.length > 0),
-        })),
-      );
-      const withNotes = boards.filter((b) => b.people.length > 0);
-      // Only the meetings asked for come with their notes in full (owner, 2026-11-25): the note text is what is heavy.
+      const { team, split } = await teamOf(teamId, actor.user.id);
+      const period = parsePeriodKey(key, split);
+      if (!period) throw new AppError(404, 'not_found');
+      // A few queries whatever the period holds (stress test, 2026-11-25: three per meeting used up the connections
+      // when a big team opened it together, and the requests waiting longer than 5 s failed).
+      const [rows, notes, members] = await Promise.all([
+        meetings.periodMeetings(teamId, today(), period.start, period.end),
+        meetings.periodNoteList(teamId, period.start, period.end),
+        teams.members(team.id),
+      ]);
+      const notesOn = new Map<string, PeriodNoteRow[]>();
+      for (const note of notes) {
+        const list = notesOn.get(note.meetingId);
+        if (list) list.push(note);
+        else notesOn.set(note.meetingId, [note]);
+      }
+      const withNotes = rows.filter((m) => notesOn.has(m.id));
+      const orders = await meetings.speakingOrders(withNotes.map((m) => m.id));
+      const member = new Map(members.map((m) => [m.userId, m]));
+      // The board's order (columnsOf): the speaking order, then the leader, active members, the others; then by name.
+      const rank = (userId: string) => {
+        const m = member.get(userId);
+        return m?.role === 'leader' ? 0 : m && m.status === 'active' ? 1 : 2;
+      };
+      const boards = withNotes.map((meeting) => {
+        const people = new Map<string, { userId: string; name: string; notes: PeriodNoteRow[] }>();
+        for (const note of notesOn.get(meeting.id) ?? []) {
+          const person = people.get(note.userId);
+          if (person) person.notes.push(note);
+          else people.set(note.userId, { userId: note.userId, name: note.name, notes: [note] });
+        }
+        const place = new Map((orders.get(meeting.id) ?? []).map((userId, index) => [userId, index]));
+        const placeOf = (userId: string) => place.get(userId) ?? Number.MAX_SAFE_INTEGER;
+        const ordered = [...people.values()].sort(
+          (a, b) =>
+            placeOf(a.userId) - placeOf(b.userId) ||
+            rank(a.userId) - rank(b.userId) ||
+            a.name.localeCompare(b.name) ||
+            a.userId.localeCompare(b.userId),
+        );
+        return { meeting, people: ordered };
+      });
+
+      // Only the meetings and people asked for come with their notes in full (owner, 2026-11-25), a part at a time.
       const wanted = Array.isArray(pick.meetings) ? new Set(pick.meetings) : null;
       const chosen =
         wanted !== null
-          ? withNotes.filter((b) => wanted.has(b.meeting.id))
+          ? boards.filter((b) => wanted.has(b.meeting.id))
           : pick.meetings === undefined && pick.latest !== undefined
-            ? withNotes.slice(-pick.latest)
-            : withNotes;
+            ? boards.slice(-pick.latest)
+            : boards;
+      const whose = pick.people ? new Set(pick.people) : null;
+      const narrowed = chosen
+        .map((b) => ({ meeting: b.meeting, people: whose ? b.people.filter((p) => whose.has(p.userId)) : b.people }))
+        .filter((b) => b.people.length > 0);
+      const { part, rest } = readerPart(narrowed, (b) => b.people.reduce((n, p) => n + p.notes.length, 0), READER_NOTES_PER_PART);
       const contents = new Map(
-        (await meetings.notesContent([...new Set(chosen.flatMap((b) => b.people.flatMap((p) => p.notes.map((n) => n.id))))])).map((row) => [row.id, row]),
+        (await meetings.notesContent([...new Set(part.flatMap((b) => b.people.flatMap((p) => p.notes.map((n) => n.id))))])).map((row) => [row.id, row]),
       );
       return {
-        index: withNotes.map(({ meeting, people }) => ({
-          id: meeting.id,
-          date: meeting.date,
-          title: meeting.title,
-          seriesName: meeting.seriesName,
-          status: meeting.status,
-          people: people.map((person) => ({ userId: person.userId, name: person.name })),
-        })),
-        meetings: chosen
-          .map(({ meeting, people }) => ({
-            id: meeting.id,
-            date: meeting.date,
-            title: meeting.title,
-            seriesName: meeting.seriesName,
-            status: meeting.status,
-            people: people.map((person) => ({
-              userId: person.userId,
-              name: person.name,
-              notes: person.notes.map((card) => {
-                const row = contents.get(card.id);
-                const content = row && (row.content as EditorDoc).type === 'doc' ? (row.content as EditorDoc) : EMPTY_DOC;
-                return { id: card.id, title: card.title, content, projects: row?.projects ?? [], updatedAt: card.updatedAt };
-              }),
-            })),
+        ...(pick.more
+          ? {}
+          : { index: boards.map(({ meeting, people }) => ({ ...meeting, people: people.map((p) => ({ userId: p.userId, name: p.name, noteCount: p.notes.length })) })) }),
+        meetings: part.map(({ meeting, people }) => ({
+          ...meeting,
+          people: people.map((person) => ({
+            userId: person.userId,
+            name: person.name,
+            notes: person.notes.map((note) => {
+              const row = contents.get(note.id);
+              const content = row && (row.content as EditorDoc).type === 'doc' ? (row.content as EditorDoc) : EMPTY_DOC;
+              return { id: note.id, title: note.title, content, projects: row?.projects ?? [], updatedAt: note.updatedAt.toISOString() };
+            }),
           })),
+        })),
+        rest: rest.map((b) => b.meeting.id),
       };
     },
 
@@ -474,18 +501,27 @@ export function createMeetingsService(deps: { db: Database; logger: Logger; now?
       // The next four weeks: as far ahead as meetings are made.
       const horizonEnd = addDays(day, HORIZON_DAYS - 1);
       const mine = (await teams.listForUser(actor.user.id)).filter((t) => t.archivedAt === null);
-      const perTeam = await Promise.all(
-        mine.map(async (team) => {
-          const split = splitOf(team);
-          const days = await meetings.teamMeetingDays(team.id, day);
-          // The current period, then each one that starts before the four weeks are over.
-          const current = periodOf(day, split);
-          const periods = [current];
-          for (let next = nextPeriod(current, split); next.start <= horizonEnd; next = nextPeriod(next, split)) periods.push(next);
-          return periods.map((period) => ({ teamId: team.id, teamName: team.name, split, period: summarize(period, days, day) }));
-        }),
+      // Each team's current period, then each one that starts before the four weeks are over.
+      const plans = mine.map((team) => {
+        const split = splitOf(team);
+        const current = periodOf(day, split);
+        const periods = [current];
+        for (let next = nextPeriod(current, split); next.start <= horizonEnd; next = nextPeriod(next, split)) periods.push(next);
+        return { team, split, periods };
+      });
+      // Their meetings in one query, only the days those periods cover (stress test, 2026-11-25: a query per team, each
+      // over the team's whole history, took the connections of one Home page for someone in many teams).
+      const days = await meetings.teamsMeetingDays(
+        plans.map(({ team, periods }) => ({ teamId: team.id, from: periods[0]?.start ?? day, to: periods[periods.length - 1]?.end ?? day })),
+        day,
       );
-      return { teams: perTeam.flat() };
+      const daysOf = new Map<string, MeetingDayRow[]>();
+      for (const row of days) daysOf.set(row.teamId, [...(daysOf.get(row.teamId) ?? []), row]);
+      return {
+        teams: plans.flatMap(({ team, split, periods }) =>
+          periods.map((period) => ({ teamId: team.id, teamName: team.name, split, period: summarize(period, daysOf.get(team.id) ?? [], day) })),
+        ),
+      };
     },
 
     async schedule(actor, meetingId) {

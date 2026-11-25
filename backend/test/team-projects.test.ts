@@ -182,6 +182,11 @@ describeDb("a period's projects: only what was shared on the team's meetings in 
     expect(text).not.toContain('Checkout week 1'); // another project's part of the same note
     expect(text).not.toContain('Loose text'); // untagged text stays in the note
     expect(text).not.toContain('Other team only');
+    // Earliest meeting first, to review from the start of the period.
+    const fromStart = await json<{ updates: Update[] }>(
+      await call(lia, 'GET', `/teams/${team}/periods/${Q2}/projects/${payments}/updates?order=oldest`),
+    );
+    expect(fromStart.updates.map((u) => u.noteId)).toEqual([first, both]);
     expect((await updatesOf(lia, team, Q1, payments)).updates.map((u) => [u.noteId, u.meetings.map((m) => m.id)])).toEqual([
       [both, [march]],
       [inFeb, [feb]],
@@ -200,6 +205,7 @@ describeDb("a period's projects: only what was shared on the team's meetings in 
       `/periods/${Q2}/projects/abc/updates`,
       `/periods/${Q2}/projects/${checkout}/updates?offset=-1`,
       `/periods/${Q2}/projects/${checkout}/updates?extra=1`,
+      `/periods/${Q2}/projects/${checkout}/updates?order=sideways`,
     ]) {
       expect(await code(await get(lia, bad))).toBe('validation_failed');
     }

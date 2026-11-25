@@ -56,6 +56,25 @@ export interface MeetingDayRow {
   noteCount: number;
 }
 
+/** A meeting of a period, as the reader names it (no counts). */
+export interface PeriodMeetingRow {
+  id: string;
+  date: string;
+  title: string | null;
+  seriesName: string;
+  status: MeetingStatus;
+}
+
+/** A note with something in it, shared on a meeting of a period, without its text (to list and order the reader). */
+export interface PeriodNoteRow {
+  meetingId: string;
+  id: string;
+  userId: string;
+  name: string;
+  title: string;
+  updatedAt: Date;
+}
+
 /** A note's full content, to read a whole period. */
 export interface NoteContentRow {
   id: string;
@@ -150,8 +169,22 @@ export interface MeetingsRepository {
   scheduleAround(meetingId: string, today: string, window: number): Promise<ScheduleMeeting[]>;
   /** Every meeting of the team (all its series) by day, with its shown status and notes count. */
   teamMeetingDays(teamId: string, today: string): Promise<MeetingDayRow[]>;
+  /** The meetings of several teams, each between its own days (both included), by day, in one query (Home). */
+  teamsMeetingDays(
+    ranges: readonly { teamId: string; from: string; to: string }[],
+    today: string,
+  ): Promise<(MeetingDayRow & { teamId: string })[]>;
   /** The team's meetings from `from` to `to` (both included), by day. */
   listForTeamBetween(teamId: string, today: string, from: string, to: string): Promise<MeetingRow[]>;
+  /** The team's meetings from `from` to `to` (both included), by day, without counts. */
+  periodMeetings(teamId: string, today: string, from: string, to: string): Promise<PeriodMeetingRow[]>;
+  /**
+   * Every note with something in it (title, text or a picture) shared on the team's meetings from `from` to `to`, in
+   * one query: by meeting, then in each person's order on it (arranged first, then newest).
+   */
+  periodNoteList(teamId: string, from: string, to: string): Promise<PeriodNoteRow[]>;
+  /** For each of these meetings, its speaking order (its own, or the latest earlier one of its schedule), in one query. */
+  speakingOrders(meetingIds: readonly string[]): Promise<Map<string, string[]>>;
   /** The content and projects of these notes (any order). */
   notesContent(noteIds: string[]): Promise<NoteContentRow[]>;
   /** The meeting and its team id; locks the meeting row until the transaction ends. */
@@ -183,8 +216,7 @@ const MEETING_COLUMNS = (todayParam: string) => `
   m.id, m.series_id AS "seriesId", s.name AS "seriesName", s.team_id AS "teamId", t.name AS "teamName",
   m.meeting_date AS date, m.scheduled_date AS "scheduledDate", m.title,
   ${STATUS(todayParam)} AS status,
-  (SELECT count(*)::int FROM note_meetings nm JOIN notes n ON n.id = nm.note_id
-    WHERE nm.meeting_id = m.id AND ${NOT_BLANK}) AS "noteCount",
+  ${NOTE_COUNT('m.id')} AS "noteCount",
   LEAST(COALESCE((SELECT max(p.meeting_date) + 1 FROM meetings p
                    WHERE p.series_id = m.series_id AND p.meeting_date < m.meeting_date AND p.status <> 'cancelled'),
                  (s.created_at AT TIME ZONE 'Asia/Jakarta')::date),
@@ -202,6 +234,21 @@ const MEETING_COLUMNS = (todayParam: string) => `
 
 // A note with no title, no text and no image (just started) is not counted, and shows on boards to its owner only.
 const NOT_BLANK = `(n.title <> '' OR n.content_text <> '' OR jsonb_path_exists(n.content, 'strict $.** ? (@.type == "image")'))`;
+
+/**
+ * The opposite, for note `alias`: written exactly as the partial index `notes_blank_idx` states it (migration
+ * `notes_blank_index`), so PostgreSQL can answer from that small index.
+ */
+const BLANK = (alias: string) =>
+  `(${alias}.title = '' AND ${alias}.content_text = '' AND NOT jsonb_path_exists(${alias}.content, 'strict $.** ? (@.type == "image")'))`;
+
+/**
+ * How many notes with something in them are on `meeting`: every link, less the blank notes' (stress test,
+ * 2026-11-25: checking each note read every note of a team's history, 17,000 for a 151-person team's periods).
+ */
+const NOTE_COUNT = (meeting: string) =>
+  `((SELECT count(*) FROM note_meetings c WHERE c.meeting_id = ${meeting})
+     - (SELECT count(*) FROM note_meetings c JOIN notes b ON b.id = c.note_id AND ${BLANK('b')} WHERE c.meeting_id = ${meeting}))::int`;
 
 const MEETING_FROM = `
   FROM meetings m
@@ -250,6 +297,35 @@ const userMeetingValues = (userId: string, today: string, page: Omit<MyMeetingsP
   page.status ?? null,
   page.q ? likePattern(page.q) : null,
 ];
+
+/**
+ * Each meeting's speaking order (user ids in order): its own, or else the latest earlier meeting's of its schedule that
+ * has one. Meetings with neither are left out.
+ */
+async function speakingOrdersOf(db: Db, meetingIds: readonly string[]): Promise<Map<string, string[]>> {
+  const orders = new Map<string, string[]>();
+  if (meetingIds.length === 0) return orders;
+  const { rows } = await db.query<{ meetingId: string; userId: string }>(
+    `SELECT m.id AS "meetingId", sp.user_id AS "userId"
+       FROM meetings m
+      CROSS JOIN LATERAL (
+            SELECT o.id FROM meetings o
+             WHERE o.series_id = m.series_id AND (o.id = m.id OR o.meeting_date < m.meeting_date)
+               AND EXISTS (SELECT 1 FROM meeting_speakers x WHERE x.meeting_id = o.id)
+             ORDER BY o.id = m.id DESC, o.meeting_date DESC
+             LIMIT 1) source
+       JOIN meeting_speakers sp ON sp.meeting_id = source.id
+      WHERE m.id = ANY($1::uuid[])
+      ORDER BY m.id, sp.position, sp.user_id`,
+    [meetingIds],
+  );
+  for (const row of rows) {
+    const order = orders.get(row.meetingId);
+    if (order) order.push(row.userId);
+    else orders.set(row.meetingId, [row.userId]);
+  }
+  return orders;
+}
 
 export function createMeetingsRepository(db: Db): MeetingsRepository {
   return {
@@ -400,8 +476,7 @@ export function createMeetingsRepository(db: Db): MeetingsRepository {
       const pick = (side: '<=' | '>', order: 'ASC' | 'DESC', limit: string) => `
         (SELECT o.id, o.meeting_date AS date,
                 CASE WHEN o.status = 'scheduled' AND o.meeting_date < $2::date THEN 'done' ELSE o.status::text END AS status,
-                (SELECT count(*)::int FROM note_meetings nm JOIN notes n ON n.id = nm.note_id
-                  WHERE nm.meeting_id = o.id AND ${NOT_BLANK}) AS "noteCount"
+                ${NOTE_COUNT('o.id')} AS "noteCount"
            FROM meetings m JOIN meetings o ON o.series_id = m.series_id
           WHERE m.id = $1 AND o.meeting_date ${side} m.meeting_date
           ORDER BY o.meeting_date ${order}
@@ -415,13 +490,24 @@ export function createMeetingsRepository(db: Db): MeetingsRepository {
 
     async teamMeetingDays(teamId, today) {
       const { rows } = await db.query<MeetingDayRow>(
-        `SELECT m.id, m.meeting_date AS date, ${STATUS('$2')} AS status,
-                (SELECT count(*)::int FROM note_meetings nm JOIN notes n ON n.id = nm.note_id
-                  WHERE nm.meeting_id = m.id AND ${NOT_BLANK}) AS "noteCount"
+        `SELECT m.id, m.meeting_date AS date, ${STATUS('$2')} AS status, ${NOTE_COUNT('m.id')} AS "noteCount"
            FROM meetings m JOIN meeting_series s ON s.id = m.series_id
           WHERE s.team_id = $1
           ORDER BY m.meeting_date, m.id`,
         [teamId, today],
+      );
+      return rows;
+    },
+
+    async teamsMeetingDays(ranges, today) {
+      if (ranges.length === 0) return [];
+      const { rows } = await db.query<MeetingDayRow & { teamId: string }>(
+        `SELECT s.team_id AS "teamId", m.id, m.meeting_date AS date, ${STATUS('$4')} AS status, ${NOTE_COUNT('m.id')} AS "noteCount"
+           FROM unnest($1::uuid[], $2::date[], $3::date[]) AS r(team_id, first_day, last_day)
+           JOIN meeting_series s ON s.team_id = r.team_id
+           JOIN meetings m ON m.series_id = s.id AND m.meeting_date BETWEEN r.first_day AND r.last_day
+          ORDER BY m.meeting_date, m.id`,
+        [ranges.map((r) => r.teamId), ranges.map((r) => r.from), ranges.map((r) => r.to), today],
       );
       return rows;
     },
@@ -435,6 +521,34 @@ export function createMeetingsRepository(db: Db): MeetingsRepository {
       );
       return rows;
     },
+
+    async periodMeetings(teamId, today, from, to) {
+      const { rows } = await db.query<PeriodMeetingRow>(
+        `SELECT m.id, m.meeting_date AS date, m.title, s.name AS "seriesName", ${STATUS('$2')} AS status
+           FROM meetings m JOIN meeting_series s ON s.id = m.series_id
+          WHERE s.team_id = $1 AND m.meeting_date BETWEEN $3::date AND $4::date
+          ORDER BY m.meeting_date, lower(s.name), m.id`,
+        [teamId, today, from, to],
+      );
+      return rows;
+    },
+
+    async periodNoteList(teamId, from, to) {
+      const { rows } = await db.query<PeriodNoteRow>(
+        `SELECT nm.meeting_id AS "meetingId", n.id, n.user_id AS "userId", u.name, n.title, n.updated_at AS "updatedAt"
+           FROM meetings m
+           JOIN meeting_series s ON s.id = m.series_id
+           JOIN note_meetings nm ON nm.meeting_id = m.id
+           JOIN notes n ON n.id = nm.note_id
+           JOIN users u ON u.id = n.user_id
+          WHERE s.team_id = $1 AND m.meeting_date BETWEEN $2::date AND $3::date AND ${NOT_BLANK}
+          ORDER BY nm.meeting_id, nm.position ASC NULLS LAST, n.created_at DESC, n.id DESC`,
+        [teamId, from, to],
+      );
+      return rows;
+    },
+
+    speakingOrders: (meetingIds) => speakingOrdersOf(db, meetingIds),
 
     async notesContent(noteIds) {
       if (noteIds.length === 0) return [];
@@ -508,19 +622,7 @@ export function createMeetingsRepository(db: Db): MeetingsRepository {
     },
 
     async speakingOrder(meetingId) {
-      const { rows } = await db.query<{ userId: string }>(
-        `SELECT sp.user_id AS "userId"
-           FROM meeting_speakers sp
-          WHERE sp.meeting_id = (
-                SELECT o.id FROM meetings m JOIN meetings o ON o.series_id = m.series_id
-                 WHERE m.id = $1 AND (o.id = m.id OR o.meeting_date < m.meeting_date)
-                   AND EXISTS (SELECT 1 FROM meeting_speakers x WHERE x.meeting_id = o.id)
-                 ORDER BY o.id = m.id DESC, o.meeting_date DESC
-                 LIMIT 1)
-          ORDER BY sp.position, sp.user_id`,
-        [meetingId],
-      );
-      return rows.map((row) => row.userId);
+      return (await speakingOrdersOf(db, [meetingId])).get(meetingId) ?? [];
     },
 
     async setSpeakers(meetingId, userIds) {

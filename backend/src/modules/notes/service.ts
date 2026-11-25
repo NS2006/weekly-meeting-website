@@ -11,6 +11,7 @@ import type {
   NoteSummary,
   ProjectUpdatesResponse,
   UpdateNoteRequest,
+  UpdateOrder,
 } from '@weekly-meeting/shared';
 import type { Database } from '../../database/pool.ts';
 import { todayInJakarta } from '../../utils/dates.ts';
@@ -26,9 +27,11 @@ import {
   plainText,
   projectSections,
   sectionDoc,
+  sameJson,
   sectionPrint,
   withAttachments,
   withoutSections,
+  type ProjectSection,
 } from './content.ts';
 import {
   createNotesRepository,
@@ -36,8 +39,20 @@ import {
   type NoteRow,
   type NotesRepository,
   type NoteSummaryRow,
+  type StoredSection,
 } from './repository.ts';
 import { PAGE_SIZE } from './types.ts';
+
+/** The project parts about to be saved are the ones stored: same places, projects and content. */
+function sameSections(stored: readonly StoredSection[], next: readonly ProjectSection[]): boolean {
+  return (
+    stored.length === next.length &&
+    stored.every((s, i) => {
+      const n = next[i];
+      return n !== undefined && n.position === s.position && n.projectId === s.projectId && sameJson(n.content, s.content);
+    })
+  );
+}
 
 export interface NotesService {
   list(actor: AuthContext, filters: NotesQuery): Promise<NotesResponse>;
@@ -48,7 +63,7 @@ export interface NotesService {
   /** A copy of my note as a new note of mine (text, project parts, its own copies of the images; no meetings). */
   copy(actor: AuthContext, noteId: string, input: CopyNoteRequest): Promise<NoteDetail>;
   /** A project page's updates: the sections of my notes tagged with my project. */
-  updates(actor: AuthContext, projectId: string, offset: number): Promise<ProjectUpdatesResponse>;
+  updates(actor: AuthContext, projectId: string, offset: number, order?: UpdateOrder): Promise<ProjectUpdatesResponse>;
   /** FR-9: puts my note on a meeting's board (a meeting of a team I am in); answers the note's meetings. */
   linkMeeting(actor: AuthContext, noteId: string, meetingId: string): Promise<NoteMeeting[]>;
   /** Takes my note off a meeting's board; answers the note's meetings. */
@@ -123,12 +138,11 @@ export function createNotesService(deps: { db: Database; logger: Logger; storage
    * save keeps every one of them, tagged, with the same text and pictures, or is refused (409 `project_archived`).
    * They may move within the note. The editor already keeps them read-only; this is the server's own check.
    */
-  async function keepFrozen(repo: NotesRepository, noteId: string, ownerId: string, content: EditorDoc) {
-    const stored = await repo.sectionsOf(noteId);
+  async function keepFrozen(repo: NotesRepository, stored: readonly StoredSection[], ownerId: string, content: EditorDoc) {
     if (stored.length === 0) return;
     const archived = await archivedAmong(repo, ownerId, stored.map((s) => s.projectId));
     if (archived.size === 0) return;
-    const prints = (sections: { projectId: string | null; content: EditorDoc }[]) =>
+    const prints = (sections: readonly { projectId: string | null; content: EditorDoc }[]) =>
       sections
         .filter((s) => s.projectId !== null && archived.has(s.projectId))
         .map((s) => `${s.projectId}:${sectionPrint(s.content)}`)
@@ -143,10 +157,9 @@ export function createNotesService(deps: { db: Database; logger: Logger; storage
    * tagged with (an archived project is read-only: it gets no new sections, but keeps the ones it has). Any other
    * tag (someone else's project, a deleted one) is removed, leaving that section untagged with its text intact.
    */
-  async function allowedProjects(repo: NotesRepository, doc: EditorDoc, noteId: string | null, ownerId: string) {
+  async function allowedProjects(repo: NotesRepository, doc: EditorDoc, already: ReadonlySet<string>, ownerId: string) {
     const ids = [...new Set(projectSections(doc).flatMap((s) => (s.projectId ? [s.projectId] : [])))];
     const owned = await repo.ownedProjects(ownerId, ids);
-    const already = new Set(noteId ? await repo.taggedProjectIds(noteId) : []);
     return new Set(owned.filter((p) => p.status === 'active' || already.has(p.id)).map((p) => p.id));
   }
 
@@ -154,10 +167,7 @@ export function createNotesService(deps: { db: Database; logger: Logger; storage
     async list(actor, query) {
       const { offset = 0, limit = PAGE_SIZE, sort = 'newest', ...rest } = query;
       const filters = { ...rest, sort };
-      const [rows, total] = await Promise.all([
-        notes.listForUser(actor.user.id, filters, { offset, limit }, today()),
-        notes.countForUser(actor.user.id, filters),
-      ]);
+      const { rows, total } = await notes.listForUser(actor.user.id, filters, { offset, limit }, today());
       return { notes: rows.slice(0, limit).map(toSummary), hasMore: rows.length > limit, total };
     },
 
@@ -194,11 +204,18 @@ export function createNotesService(deps: { db: Database; logger: Logger; storage
           if (!result) throw new AppError(409, 'version_conflict');
           return result;
         }
-        const content = limitProjects(input.content, await allowedProjects(repo, input.content, noteId, actor.user.id));
-        await keepFrozen(repo, noteId, actor.user.id, content);
+        // The project parts as last saved, read once: the tags the note already had, the frozen parts, and whether
+        // the parts changed at all.
+        const stored = await repo.sectionsOf(noteId);
+        const already = new Set(stored.map((s) => s.projectId));
+        const content = limitProjects(input.content, await allowedProjects(repo, input.content, already, actor.user.id));
+        await keepFrozen(repo, stored, actor.user.id, content);
         const result = await repo.save(noteId, input.version, { title: input.title, content, text: plainText(content) });
         if (!result) throw new AppError(409, 'version_conflict');
-        await repo.replaceSections(noteId, updatesIn(content));
+        // Most autosaves change the note's other text, not its project parts: those rows are rewritten only when they
+        // changed (stress-test review, 2026-11-25: every save rewrote them, in the largest table).
+        const sections = updatesIn(content);
+        if (!sameSections(stored, sections)) await repo.replaceSections(noteId, sections);
         return result;
       });
       // Autosave runs every few seconds while typing: debug, not info.
@@ -246,7 +263,7 @@ export function createNotesService(deps: { db: Database; logger: Logger; storage
           const repo = createNotesRepository(tx);
           const moved = withAttachments(doc, renamed);
           // Tags that are not mine (any more) are removed, leaving those parts untagged, text intact.
-          const content = limitProjects(moved, await allowedProjects(repo, moved, null, actor.user.id));
+          const content = limitProjects(moved, await allowedProjects(repo, moved, new Set(), actor.user.id));
           await repo.create(actor.user.id, input.title ?? source.title, content, plainText(content), copyId);
           for (const image of copied) await repo.addAttachment(copyId, image);
           await repo.replaceSections(copyId, updatesIn(content));
@@ -260,10 +277,10 @@ export function createNotesService(deps: { db: Database; logger: Logger; storage
       }
     },
 
-    async updates(actor, projectId, offset) {
+    async updates(actor, projectId, offset, order = 'newest') {
       const [project] = await notes.ownedProjects(actor.user.id, [projectId]);
       if (!project) throw new AppError(404, 'not_found');
-      const rows = await notes.updatesForProject(projectId, actor.user.id, { offset, limit: PAGE_SIZE });
+      const rows = await notes.updatesForProject(projectId, actor.user.id, { offset, limit: PAGE_SIZE }, order);
       return {
         updates: rows.slice(0, PAGE_SIZE).map((row) => ({
           ...row,

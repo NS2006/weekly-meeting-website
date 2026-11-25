@@ -227,5 +227,6 @@ export const teamsId: Messages['teams'] = {
     openOnBoard: 'Buka catatan ini di papan rapat',
     loadingUpdates: 'Memuat pembaruan',
     showOlder: 'Tampilkan pembaruan lebih lama',
+    showNewer: 'Tampilkan pembaruan lebih baru',
   },
 };

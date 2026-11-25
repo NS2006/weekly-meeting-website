@@ -19,6 +19,11 @@ import { idSchema, UUID } from '../../utils/ids.ts';
 
 export const MAX_DEPTH = 40;
 export const MAX_NODES = 50_000;
+/**
+ * At most this many project parts in one note (stress-test review, 2026-11-25: each is a row rewritten on save; a
+ * real note has a few, the team's busiest about ten).
+ */
+export const MAX_SECTIONS = 200;
 const MAX_TEXT = 1_000_000;
 
 /** Image sources: our own attachment route only (no external images, no data: URLs). */
@@ -249,6 +254,9 @@ export function sanitizeDoc(input: unknown): SanitizeResult {
   try {
     if (!isObject(input) || input.type !== 'doc') throw new Refused([], 'not a document');
     const doc = element(input, 'doc', NODES.doc as NodeRule, [], 0) as EditorDoc;
+    if ((doc.content ?? []).filter((n) => n.type === 'projectSection').length > MAX_SECTIONS) {
+      throw new Refused(['content'], 'too many project sections');
+    }
     return { ok: true, doc, text: plainText(doc) };
   } catch (err) {
     if (err instanceof Refused) return { ok: false, path: err.path, reason: err.message };
@@ -344,6 +352,22 @@ export function withoutSections(doc: EditorDoc, projects: ReadonlySet<string>): 
  */
 export function sectionPrint(content: EditorNode): string {
   return `${plainText(content)}\u0000${[...attachmentIdsIn(content)].sort().join(',')}`;
+}
+
+/** The same JSON, whatever the order of object keys (PostgreSQL's jsonb keeps them in an order of its own). */
+export function sameJson(a: unknown, b: unknown): boolean {
+  return stableJson(a) === stableJson(b);
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+  if (isObject(value)) {
+    const keys = Object.keys(value)
+      .filter((key) => value[key] !== undefined)
+      .sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
 }
 
 /** The attachment ids of the document's images (our own `/api/attachments/<id>` sources), each once. */

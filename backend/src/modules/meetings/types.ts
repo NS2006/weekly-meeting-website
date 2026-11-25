@@ -50,18 +50,31 @@ export const IdParamsSchema = z.object({ id }).strict();
 export const PeriodParamsSchema = z.object({ id, key: z.string().regex(/^\d{4}-\d{2}-\d{1,2}m$/) }).strict();
 
 /**
+ * A period's notes come a part at a time: whole meetings until about this many notes (always at least one meeting).
+ * Stress test, 2026-11-25: a 151-person team's quarter is 3,000 notes and 16 MB in one response, which took the
+ * server's memory from 217 to 705 MB and slowed everyone else's pages twentyfold.
+ */
+export const READER_NOTES_PER_PART = 100;
+
+/** Ids separated by commas (UUIDs are 36 characters, plus the comma). */
+const idList = (max: number) =>
+  z
+    .string()
+    .max(max * 37)
+    .transform((value) => value.split(','))
+    .pipe(z.array(id).min(1).max(max));
+
+/**
  * Which meetings of a period to send in full (owner, 2026-11-25: a quarter can hold hundreds of notes; the reader
- * starts with the last three meetings): `all`, ids separated by commas (at most 200), or the `latest` N.
+ * starts with the last three meetings): `all`, ids separated by commas (at most 200), or the `latest` N; `people`, whose
+ * notes (at most 500); `more=1`, a later part of the same reading (no index).
  */
 export const PeriodNotesQuerySchema = z
   .object({
-    meetings: z
-      .string()
-      .max(200 * 37)
-      .transform((value) => (value === 'all' ? ('all' as const) : value.split(',')))
-      .pipe(z.union([z.literal('all'), z.array(id).min(1).max(200)]))
-      .optional(),
+    meetings: z.union([z.literal('all'), idList(200)]).optional(),
     latest: z.coerce.number().int().min(1).max(50).optional(),
+    people: idList(500).optional(),
+    more: z.literal('1').optional(),
   })
   .strict();
 export type PeriodNotesPick = z.infer<typeof PeriodNotesQuerySchema>;

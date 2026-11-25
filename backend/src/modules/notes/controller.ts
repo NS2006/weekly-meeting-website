@@ -8,6 +8,7 @@ import type {
   NotesResponse,
   ProjectUpdatesResponse,
   UpdateNoteRequest,
+  UpdateOrder,
 } from '@weekly-meeting/shared';
 import type { Response } from 'express';
 import { authOf } from '../../middleware/authenticate.ts';
@@ -59,8 +60,8 @@ export function createNotesController(service: NotesService) {
     }),
 
     projectUpdates: asyncHandler(async (_req, res) => {
-      const { offset } = res.locals.validated.query as { offset: number };
-      res.json((await service.updates(authOf(res), idOf(res), offset)) satisfies ProjectUpdatesResponse);
+      const { offset, order } = res.locals.validated.query as { offset: number; order: UpdateOrder };
+      res.json((await service.updates(authOf(res), idOf(res), offset, order)) satisfies ProjectUpdatesResponse);
     }),
   };
 }

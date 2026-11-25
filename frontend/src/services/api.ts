@@ -49,6 +49,7 @@ import type {
   TeamsResponse,
   UpdateMeetingRequest,
   UpdateNoteRequest,
+  UpdateOrder,
   UpdateProjectRequest,
   UpdateSeriesRequest,
   UpdateTeamRequest,
@@ -142,10 +143,10 @@ export const api = {
   // A period's Projects board: the members' projects through what was shared on the team's meetings in it only
   periodProjects: (teamId: string, key: string) =>
     request<PeriodProjectsResponse>('GET', `/teams/${encodeURIComponent(teamId)}/periods/${encodeURIComponent(key)}/projects`),
-  periodProjectUpdates: (teamId: string, key: string, projectId: string, offset: number) =>
+  periodProjectUpdates: (teamId: string, key: string, projectId: string, offset: number, order: UpdateOrder = 'newest') =>
     request<TeamProjectUpdatesResponse>(
       'GET',
-      `/teams/${encodeURIComponent(teamId)}/periods/${encodeURIComponent(key)}/projects/${encodeURIComponent(projectId)}/updates${queryString({ offset: String(offset) })}`,
+      `/teams/${encodeURIComponent(teamId)}/periods/${encodeURIComponent(key)}/projects/${encodeURIComponent(projectId)}/updates${queryString({ offset: String(offset), order: order === 'oldest' ? order : undefined })}`,
     ),
   /** A few of the teams I am in at random, or (with `q`) the ones whose name holds it. */
   teamChoices: (q = '') => request<TeamChoicesResponse>('GET', `/teams/choices${queryString({ q })}`),
@@ -166,8 +167,11 @@ export const api = {
   /** A copy of my note as a new note (its own images; shared on no meeting). */
   copyNote: (id: string, body: CopyNoteRequest = {}) => request<NoteResponse>('POST', `/notes/${encodeURIComponent(id)}/copy`, body),
   createNote: (body: CreateNoteRequest = {}) => request<NoteResponse>('POST', '/notes', body),
-  projectUpdates: (projectId: string, offset = 0) =>
-    request<ProjectUpdatesResponse>('GET', `/projects/${encodeURIComponent(projectId)}/updates?offset=${offset}`),
+  projectUpdates: (projectId: string, offset = 0, order: UpdateOrder = 'newest') =>
+    request<ProjectUpdatesResponse>(
+      'GET',
+      `/projects/${encodeURIComponent(projectId)}/updates${queryString({ offset: String(offset), order: order === 'oldest' ? order : undefined })}`,
+    ),
   getNote: (id: string) => request<NoteResponse>('GET', `/notes/${encodeURIComponent(id)}`),
   saveNote: (id: string, body: UpdateNoteRequest) => request<NoteSavedResponse>('PATCH', `/notes/${encodeURIComponent(id)}`, body),
   deleteNote: (id: string) => request<void>('DELETE', `/notes/${encodeURIComponent(id)}`),

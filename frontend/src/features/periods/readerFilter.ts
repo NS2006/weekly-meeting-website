@@ -1,4 +1,4 @@
-import type { PeriodMeetingIndex, PeriodMeetingNotes, PeriodNotesQuery } from '@weekly-meeting/shared';
+import type { PeriodMeetingHead, PeriodMeetingNotes, PeriodNotesQuery } from '@weekly-meeting/shared';
 import { currentLanguage, type Language } from '../../i18n/language';
 import { fill, messages } from '../../i18n/messages';
 import { formatDay } from '../../utils/dates';
@@ -10,6 +10,11 @@ import { formatDay } from '../../utils/dates';
  */
 export type Selection = string[] | null;
 
+/** A meeting with who wrote on it: an entry of the period's index, or a meeting loaded in full. */
+export type MeetingWithPeople = PeriodMeetingHead & { people: readonly { userId: string; name: string }[] };
+/** Anything with an id (the index, when only its meetings' ids matter). */
+type WithId = { id: string };
+
 export interface PersonOption {
   userId: string;
   name: string;
@@ -18,7 +23,7 @@ export interface PersonOption {
 }
 
 /** Everyone with notes in the period, by name. */
-export function peopleOf(meetings: readonly PeriodMeetingIndex[]): PersonOption[] {
+export function peopleOf(meetings: readonly MeetingWithPeople[]): PersonOption[] {
   const people = new Map<string, PersonOption>();
   for (const meeting of meetings) {
     for (const person of meeting.people) {
@@ -57,18 +62,70 @@ const ID_LIST = /^[0-9a-f-]{36}(,[0-9a-f-]{36})*$/i;
 /** An address value that lists meetings (not "all", "none" or something unreadable). */
 const isList = (param: string) => ID_LIST.test(param);
 
-/** What to ask the server for, from the address's `meetings`: the latest 3 when it names none, all, or the ones listed. */
-export function notesRequest(param: string): PeriodNotesQuery {
-  if (param === 'all') return { meetings: 'all' };
-  if (isList(param)) return { meetings: param };
-  return { latest: READER_LATEST };
+/**
+ * What to ask the server for, from the address's `meetings` (the latest 3 when it names none, all, or the ones listed)
+ * and `people` (only their notes when it lists some, stress test 2026-11-25: picking one person then loads only theirs).
+ */
+export function notesRequest(param: string, people = ''): PeriodNotesQuery {
+  const whose = isList(people) ? { people } : {};
+  if (param === 'all') return { meetings: 'all', ...whose };
+  if (isList(param)) return { meetings: param, ...whose };
+  return { latest: READER_LATEST, ...whose };
+}
+
+/**
+ * The request for the next part of the same reading (the server sends about 100 notes at a time and names the meetings
+ * left, `rest`): those meetings, for the same people, without the index again.
+ */
+export function nextPart(request: PeriodNotesQuery, rest: readonly string[]): PeriodNotesQuery {
+  return { meetings: rest.join(','), ...(request.people ? { people: request.people } : {}), more: 1 };
+}
+
+/**
+ * The meetings to read with only the people picked, from the index: what the reader will show once every part has
+ * loaded (the meeting list beside the notes, and where "Go to" can lead before a meeting has loaded).
+ */
+export function readingPlan<M extends WithId & { people: readonly { userId: string }[] }>(
+  index: readonly M[],
+  meetingIds: Selection,
+  userIds: Selection,
+): M[] {
+  const keepMeeting = meetingIds === null ? null : new Set(meetingIds);
+  const keepPerson = userIds === null ? null : new Set(userIds);
+  return index
+    .filter((m) => keepMeeting === null || keepMeeting.has(m.id))
+    .map((m) => (keepPerson === null ? m : ({ ...m, people: m.people.filter((p) => keepPerson.has(p.userId)) } as M)))
+    .filter((m) => m.people.length > 0);
+}
+
+/**
+ * The parts a reading loads in (stress test, 2026-11-25): whole meetings, in order, until the next one would go over
+ * READER_NOTES_PER_PART notes, at least one meeting each. The same rule as the server's (backend `readerParts.ts`), so
+ * the reader can ask for any one part on its own: the one near the screen, or the one jumped to.
+ */
+export const READER_NOTES_PER_PART = 100;
+export function splitParts(meetings: readonly { id: string; notes: number }[], budget = READER_NOTES_PER_PART): string[][] {
+  const parts: string[][] = [];
+  let current: string[] = [];
+  let used = 0;
+  for (const meeting of meetings) {
+    if (current.length > 0 && used + meeting.notes > budget) {
+      parts.push(current);
+      current = [];
+      used = 0;
+    }
+    current.push(meeting.id);
+    used += meeting.notes;
+  }
+  if (current.length > 0) parts.push(current);
+  return parts;
 }
 
 /**
  * The meetings picked, from the address's `meetings`: the latest 3 (of those with notes) when it names none or none of
  * this period's, null (all) for `all`, nothing for `none`, else the ones listed.
  */
-export function pickedMeetingsOf(param: string, index: readonly PeriodMeetingIndex[]): Selection {
+export function pickedMeetingsOf(param: string, index: readonly WithId[]): Selection {
   const ids = index.map((m) => m.id);
   if (param === 'all') return null;
   if (param === 'none') return [];
@@ -77,7 +134,7 @@ export function pickedMeetingsOf(param: string, index: readonly PeriodMeetingInd
 }
 
 /** The address's `meetings` for a pick: absent for the latest 3 (the start), `all` for every meeting. */
-export function meetingsParam(selected: Selection, index: readonly PeriodMeetingIndex[]): string {
+export function meetingsParam(selected: Selection, index: readonly WithId[]): string {
   const ids = index.map((m) => m.id);
   const latest = ids.length <= READER_LATEST ? '' : ids.slice(-READER_LATEST).join(',');
   const value = selectionParam(selected, ids);
@@ -86,11 +143,11 @@ export function meetingsParam(selected: Selection, index: readonly PeriodMeeting
 }
 
 /** Whether the reader shows its start: the latest meetings only, while there are more. */
-export const showsLatest = (param: string, index: readonly PeriodMeetingIndex[]) =>
+export const showsLatest = (param: string, index: readonly WithId[]) =>
   index.length > READER_LATEST && !(param === 'all' || param === 'none' || (isList(param) && param.split(',').some((id) => index.some((m) => m.id === id))));
 
 /** An address `meetings` that names none of this period's meetings (an old link, or unreadable): start over instead. */
-export const isStale = (param: string, index: readonly PeriodMeetingIndex[]) =>
+export const isStale = (param: string, index: readonly WithId[]) =>
   param !== '' && param !== 'all' && param !== 'none' && !(isList(param) && param.split(',').some((id) => index.some((m) => m.id === id)));
 
 /** The chosen meetings, each with only the chosen people; meetings left with nobody are dropped. */
@@ -108,7 +165,7 @@ export function filterNotes(meetings: readonly PeriodMeetingNotes[], meetingIds:
  * the interface language on screen; the downloads pass 'en'.
  */
 export function describeSelection(
-  meetings: readonly PeriodMeetingIndex[],
+  meetings: readonly MeetingWithPeople[],
   meetingIds: Selection,
   userIds: Selection,
   language: Language = currentLanguage(),
@@ -153,7 +210,7 @@ const shortDay = (date: string) => `${Number(date.slice(8, 10))} ${MONTHS[Number
 export function exportFileName(
   teamName: string,
   periodLabel: string,
-  meetings: readonly PeriodMeetingIndex[],
+  meetings: readonly MeetingWithPeople[],
   meetingIds: Selection,
   userIds: Selection,
   extension: string,

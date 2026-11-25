@@ -1,5 +1,5 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreateNoteRequest, NoteMeeting, NoteResponse, NotesQuery } from '@weekly-meeting/shared';
+import type { CreateNoteRequest, NoteMeeting, NoteResponse, NotesQuery, UpdateOrder } from '@weekly-meeting/shared';
 import { api } from '../../services/api';
 
 export const NOTES_KEY = ['notes'] as const;
@@ -28,10 +28,10 @@ export function useNotesPage(query: NotesQuery) {
 }
 
 /** A project page's updates: the sections of my notes tagged with it, newest note first, in pages. */
-export function useProjectUpdates(projectId: string) {
+export function useProjectUpdates(projectId: string, order: UpdateOrder = 'newest') {
   return useInfiniteQuery({
-    queryKey: [...NOTES_KEY, 'updates', projectId],
-    queryFn: ({ pageParam }) => api.projectUpdates(projectId, pageParam),
+    queryKey: [...NOTES_KEY, 'updates', projectId, order],
+    queryFn: ({ pageParam }) => api.projectUpdates(projectId, pageParam, order),
     initialPageParam: 0,
     getNextPageParam: (last, pages) => (last.hasMore ? pages.reduce((n, page) => n + page.updates.length, 0) : undefined),
   });

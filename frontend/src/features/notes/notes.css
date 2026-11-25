@@ -702,6 +702,48 @@ img.ProseMirror-separator {
   justify-content: space-between;
   gap: var(--blue-space-3);
 }
+/* A project's updates: newest or oldest first (ProjectUpdates), two pills like the period page's month choice. */
+.update-order {
+  display: flex;
+  gap: var(--blue-space-1);
+  margin-right: auto;
+}
+.update-order__item {
+  min-height: 32px;
+  padding: 2px var(--blue-space-3);
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-pill);
+  background: var(--blue-color-surface-default);
+  color: var(--blue-color-text-primary);
+  font: inherit;
+  font-size: var(--blue-font-size-sm);
+  font-weight: var(--blue-font-weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.update-order__item:hover {
+  background: var(--blue-color-surface-muted);
+}
+.update-order__item:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+}
+.update-order__item[aria-pressed='true'] {
+  border-color: var(--blue-color-brand-primary);
+  background: var(--blue-color-blue-50);
+  color: var(--blue-color-brand-primary-active);
+  font-weight: var(--blue-font-weight-semibold);
+}
+/* Phone: the title and "Write an update" on the first row, the order below them. */
+@media (max-width: 600px) {
+  .notes-panel__head:has(.update-order) {
+    flex-wrap: wrap;
+  }
+  .update-order {
+    order: 1;
+    width: 100%;
+  }
+}
 .notes-panel__title {
   display: flex;
   align-items: center;
@@ -1145,11 +1187,20 @@ img.ProseMirror-separator {
   display: flex;
   flex-direction: column;
   gap: var(--blue-space-2);
+  /* Updates far off screen are not laid out or painted until they come near (owner, 2026-11-25, like the quarter
+     reader); the browser keeps each one's size once seen, so the page does not jump. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 360px;
   padding: var(--blue-space-3) var(--blue-space-4);
   border: 1px solid var(--blue-color-border-default);
   border-left: 4px solid var(--blue-color-brand-primary);
   border-radius: var(--blue-radius-md);
   background: var(--blue-color-surface-default);
+}
+@media print {
+  .update {
+    content-visibility: visible;
+  }
 }
 .update__head {
   display: flex;

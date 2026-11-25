@@ -111,6 +111,10 @@ export const periodsId: Messages['periods'] = {
     showMonth: 'Tampilkan satu bulan',
     all: 'Semua',
     meetings: 'Rapat',
+    todayTitle_one: 'Rapat hari ini',
+    todayTitle_other: 'Rapat hari ini',
+    nextTitle_one: 'Rapat berikutnya',
+    nextTitle_other: 'Rapat berikutnya',
   },
   reader: {
     personCount_one: '{{count}} orang',
@@ -129,6 +133,11 @@ export const periodsId: Messages['periods'] = {
     showAll: 'Tampilkan semua',
     summary: '{{selection}}. Setiap rapat sesuai urutan bicaranya; Simpan sebagai PDF atau Word menyimpan apa yang ditampilkan.',
     latestHint: '{{count}} rapat terakhir dimuat lebih dulu agar cepat terbuka; “Tampilkan semua” memuat semuanya.',
+    partial: '{{loaded}} dari {{total}} rapat sudah dimuat; berikutnya dimuat saat Anda menggulir ke bawah.',
+    loadMore: 'Muat catatan berikutnya',
+    loadingMore: 'Memuat catatan berikutnya…',
+    loadMoreFailed: 'Catatan berikutnya tidak dapat dimuat.',
+    retry: 'Coba lagi',
     noNotesTitle: 'Tidak ada catatan untuk pilihan ini',
     noNotesBody: 'Pilih setidaknya satu rapat dan satu orang yang menulis di rapat itu, atau tampilkan semuanya lagi.',
     navLabel: 'Rapat di {{label}}',
@@ -141,6 +150,7 @@ export const periodsId: Messages['periods'] = {
     openMeeting: 'Buka rapat',
     noProject: 'Tanpa proyek',
     save: {
+      gettingNotes: 'Mengambil semua catatan dulu: {{done}} dari {{total}} rapat…',
       pdf: {
         button: 'Simpan sebagai PDF',
         title: 'Mengunduh PDF dari apa yang ditampilkan',
@@ -188,8 +198,14 @@ export const periodsId: Messages['periods'] = {
     about:
       '{{split}}. Setiap {{noun}} menyimpan rapat dan catatannya bersama-sama; buka salah satunya untuk melihat rapat atau membaca semua catatannya.',
     leaderSets: 'Ketua tim yang menentukan cara tahun dibagi.',
-    showRecent: 'Tampilkan {{nouns}} terbaru saja',
     showAll: 'Tampilkan semua {{total}} {{nouns}}',
+  },
+  all: {
+    title: 'Semua {{nouns}}',
+    current: 'Berjalan',
+    upcoming: 'Mendatang',
+    past: 'Yang lalu ({{count}})',
+    pages: 'Halaman {{nouns}} yang lalu',
   },
   page: {
     team: 'Tim',

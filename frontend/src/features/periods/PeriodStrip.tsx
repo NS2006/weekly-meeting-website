@@ -5,20 +5,22 @@ import { BlueAlert, BlueButton, BlueCard, BlueSkeleton } from '../../components/
 import { ApiFailure } from '../../services/api';
 import { todayWib } from '../../utils/dates';
 import { errorLabel } from '../../utils/errorLabels';
+import { PeriodListDialog } from './PeriodListDialog';
 import { PeriodCard } from './PeriodParts';
 import { PeriodSettingsDialog } from './PeriodSettingsDialog';
-import { capitalize, describeSplit, periodNoun, recentPeriods } from './split';
+import { capitalize, describeSplit, firstPeriods, periodGroups, periodNoun } from './split';
 import { useTeamPeriods } from './usePeriods';
 
 /**
  * The team page's quarters (owner, 2026-11-23): the team's year in periods, like the team's Word file that starts
- * anew each quarter. One card per period (the recent ones first shown, the rest behind "Show all"), each opening the
- * period's page; the team leader changes how the year is split.
+ * anew each quarter. One card per period, each opening the period's page: only the current one and the next or the
+ * one before (`firstPeriods`, owner 2026-11-25); "Show all" opens all of them in a dialog (`PeriodListDialog`:
+ * current, upcoming, past newest first); the team leader changes how the year is split.
  */
 export function PeriodStrip({ team }: { team: TeamDetail }) {
   const { t } = useTranslation();
   const periods = useTeamPeriods(team.id);
-  const [showAll, setShowAll] = useState(false);
+  const [listing, setListing] = useState(false);
   const [editing, setEditing] = useState(false);
   const headingId = useId();
   const today = todayWib();
@@ -28,7 +30,10 @@ export function PeriodStrip({ team }: { team: TeamDetail }) {
   const singular = periodNoun(split.periodsPerYear);
   const plural = periodNoun(split.periodsPerYear, true);
   const list = periods.data?.periods ?? [];
-  const { shown } = showAll ? { shown: list } : recentPeriods(list);
+  const { shown } = firstPeriods(list, today);
+  // What the dialog lists (a period more than four weeks away is left out).
+  const groups = periodGroups(list, today);
+  const listed = (groups.current ? 1 : 0) + groups.upcoming.length + groups.past.length;
   const code = periods.error instanceof ApiFailure ? periods.error.code : periods.error ? 'unknown_error' : null;
 
   return (
@@ -53,7 +58,7 @@ export function PeriodStrip({ team }: { team: TeamDetail }) {
           <BlueAlert variant="error">{errorLabel(code)}</BlueAlert>
         ) : periods.isPending ? (
           <div className="period-grid" aria-hidden="true">
-            {[0, 1, 2].map((n) => (
+            {[0, 1].map((n) => (
               <div key={n} className="tile period-card">
                 <BlueSkeleton width="50%" height={20} />
                 <BlueSkeleton width="40%" height={12} />
@@ -70,13 +75,16 @@ export function PeriodStrip({ team }: { team: TeamDetail }) {
             ))}
           </ol>
         )}
-        {list.length > shown.length || showAll ? (
-          <button type="button" className="link-button small period-strip__more" onClick={() => setShowAll((all) => !all)}>
-            {showAll ? t('periods.strip.showRecent', { nouns: plural }) : t('periods.strip.showAll', { total: list.length, nouns: plural })}
+        {listed > shown.length ? (
+          <button type="button" className="link-button small period-strip__more" aria-haspopup="dialog" onClick={() => setListing(true)}>
+            {t('periods.strip.showAll', { total: listed, nouns: plural })}
           </button>
         ) : null}
       </div>
       {editing ? <PeriodSettingsDialog teamId={team.id} split={split} onClose={() => setEditing(false)} /> : null}
+      {listing ? (
+        <PeriodListDialog teamId={team.id} periods={list} nouns={plural} today={today} onClose={() => setListing(false)} />
+      ) : null}
     </BlueCard>
   );
 }

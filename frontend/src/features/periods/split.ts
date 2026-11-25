@@ -1,6 +1,7 @@
 import type { PeriodsPerYear, PeriodSummary, YearSplit } from '@weekly-meeting/shared';
 import { currentLanguage, localeOf, type Language } from '../../i18n/language';
 import { fill, messages } from '../../i18n/messages';
+import { addDays } from '../../utils/dates';
 
 /**
  * Words and small sums for a team's year split into periods (quarters by default). The server decides which periods
@@ -137,16 +138,50 @@ export function progressOf(
   };
 }
 
+/** The next four weeks, as far ahead as meetings are made (the server's HORIZON_DAYS, backend meetings/types.ts). */
+export const SOON_DAYS = 28;
+
 /**
- * The periods the team page shows before "Show all": up to four, ending one after the current period (two before it,
- * the current one and the next), oldest first. Teams with few periods see them all.
+ * The two periods the team page shows before "Show all" (owner, 2026-11-25): the current one first (on the left),
+ * then the next one when it starts within the next four weeks (as Home shows it), otherwise the one before it. A new
+ * team with none before sees the next one anyway.
  */
-export function recentPeriods<T extends Pick<PeriodSummary, 'status'>>(periods: readonly T[], count = 4): { shown: T[]; hidden: number } {
-  if (periods.length <= count) return { shown: [...periods], hidden: 0 };
-  const current = periods.findIndex((p) => p.status === 'current');
-  const end = current < 0 ? periods.length : Math.min(periods.length, current + 2);
-  const start = Math.max(0, end - count);
-  return { shown: periods.slice(start, start + count), hidden: periods.length - count };
+export function firstPeriods<T extends Pick<PeriodSummary, 'status' | 'start'>>(
+  periods: readonly T[],
+  today: string,
+): { shown: T[]; hidden: number } {
+  const at = periods.findIndex((p) => p.status === 'current');
+  const current = periods[at];
+  // No current one (the server always sends it): the last two.
+  if (current === undefined) {
+    const shown = periods.slice(-2);
+    return { shown, hidden: periods.length - shown.length };
+  }
+  const next = periods[at + 1];
+  const before = periods[at - 1];
+  const soon = next !== undefined && next.start <= addDays(today, SOON_DAYS - 1);
+  const other = soon ? next : (before ?? next);
+  const shown = other === undefined ? [current] : [current, other];
+  return { shown, hidden: periods.length - shown.length };
+}
+
+/** Past periods a page in the "All quarters" dialog (three rows of two). */
+export const PAST_PERIODS_PER_PAGE = 6;
+
+/**
+ * The "All quarters" dialog's three parts (owner, 2026-11-25), so a team with years of periods finds the current one
+ * at once: the current one, the ones that start within the next four weeks, and the past ones newest first.
+ */
+export function periodGroups<T extends Pick<PeriodSummary, 'status' | 'start'>>(
+  periods: readonly T[],
+  today: string,
+): { current: T | null; upcoming: T[]; past: T[] } {
+  const soonEnd = addDays(today, SOON_DAYS - 1);
+  return {
+    current: periods.find((p) => p.status === 'current') ?? null,
+    upcoming: periods.filter((p) => p.status === 'upcoming' && p.start <= soonEnd),
+    past: periods.filter((p) => p.status === 'ended').reverse(),
+  };
 }
 
 /** "Q4" and "2026" for a period's tile; a label that is only a year ("2026") has no second part. */

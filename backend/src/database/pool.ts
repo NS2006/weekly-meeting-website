@@ -51,6 +51,9 @@ export function createPool(options: PoolOptions, logger: Logger): pg.Pool {
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
     statement_timeout: 10_000,
+    // A transaction left waiting (on something outside the database) longer than this is ended by PostgreSQL, so its
+    // locks and connection come back (stress-test review, 2026-11-25). The app's transactions take milliseconds.
+    idle_in_transaction_session_timeout: 15_000,
     application_name: 'weekly-meeting-backend',
   });
   // Without a listener, an idle client losing its connection would crash the process.

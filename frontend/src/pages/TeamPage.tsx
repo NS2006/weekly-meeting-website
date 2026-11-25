@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import type { Me, TeamDetail, TeamMemberView } from '@weekly-meeting/shared';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import { BackToTop } from '../components/BackToTop';
 import { BlueAlert, BlueBadge, BlueButton, BlueCard, BlueEmptyState, BlueTabs, tabPanelProps } from '../components/blue';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { EntityName } from '../components/EntityName';
@@ -37,7 +38,10 @@ type Dialog =
 
 const codeOf = (error: unknown) => (error instanceof ApiFailure ? error.code : error ? 'unknown_error' : null);
 
-/** One team: members, and — for its leader — editing, adding people, handing over, removing and deleting. */
+/**
+ * One team: members, and — for its leader — editing, adding people, handing over, removing and deleting. "Back to top"
+ * once the page is scrolled (owner, 2026-11-25: a big team's members list is long).
+ */
 export function TeamPage({ user }: { user: Me }) {
   const { t } = useTranslation();
   const { id = '' } = useParams();
@@ -71,6 +75,7 @@ function TeamView({ team, me }: { team: TeamDetail; me: Me }) {
   const navigate = useNavigate();
   const [dialog, setDialog] = useState<Dialog>(null);
   const [notice, setNotice] = useState<ReactNode>(null);
+  const title = useRef<HTMLHeadingElement>(null);
   const update = useUpdateTeam(team.id);
   const setLeader = useSetLeader(team.id);
   const removeMember = useRemoveMember(team.id);
@@ -99,7 +104,9 @@ function TeamView({ team, me }: { team: TeamDetail; me: Me }) {
           <TeamMonogram name={team.name} mine={isLeader} size="lg" />
           <div className="team-head__text">
             <div className="team-head__title">
-              <h1 className="page-head__title">{team.name}</h1>
+              <h1 className="page-head__title" ref={title} tabIndex={-1}>
+                {team.name}
+              </h1>
               {team.archivedAt ? null : <StarButton team={team} />}
             </div>
             <span className="team-head__meta muted small">
@@ -307,6 +314,8 @@ function TeamView({ team, me }: { team: TeamDetail; me: Me }) {
         onClose={close}
         onConfirm={(confirmName) => deleteTeam.mutate(confirmName, { onSuccess: () => void navigate('/teams') })}
       />
+
+      <BackToTop focusTarget={title} />
     </div>
   );
 }

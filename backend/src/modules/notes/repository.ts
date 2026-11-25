@@ -1,4 +1,4 @@
-import type { EditorDoc, MeetingStatus, NoteMeeting, NoteProject, NoteSort, ProjectStatus } from '@weekly-meeting/shared';
+import type { EditorDoc, MeetingStatus, NoteMeeting, NoteProject, NoteSort, ProjectStatus, UpdateOrder } from '@weekly-meeting/shared';
 import type { Db } from '../../database/pool.ts';
 import { likePattern } from '../../utils/sql.ts';
 import type { ProjectSection } from './content.ts';
@@ -32,6 +32,13 @@ export interface UpdateRow {
   noteUpdatedAt: Date;
 }
 
+/** A note's project part as last saved (a `note_sections` row). */
+export interface StoredSection {
+  position: number;
+  projectId: string;
+  content: EditorDoc;
+}
+
 /** What narrows my notes list (all optional except the sort). */
 export interface NoteFilters {
   q?: string | undefined;
@@ -59,20 +66,24 @@ export interface LinkTarget {
 }
 
 export interface NotesRepository {
-  /** A page of my notes matching the filters, in the filters' order; one row more than `limit` means more follow. */
-  listForUser(ownerId: string, filters: NoteFilters, page: { offset: number; limit: number }, today: string): Promise<NoteSummaryRow[]>;
-  /** How many of my notes match the filters. */
-  countForUser(ownerId: string, filters: NoteFilters): Promise<number>;
+  /**
+   * A page of my notes matching the filters, in the filters' order (one row more than `limit` means more follow), and
+   * how many match in all.
+   */
+  listForUser(
+    ownerId: string,
+    filters: NoteFilters,
+    page: { offset: number; limit: number },
+    today: string,
+  ): Promise<{ rows: NoteSummaryRow[]; total: number }>;
   /** The note if this user owns it; null otherwise (missing and not-yours look the same). */
   findOwned(noteId: string, ownerId: string): Promise<NoteRow | null>;
   /** Same check; locks the note until the transaction ends. */
   lockOwned(noteId: string, ownerId: string): Promise<boolean>;
   /** The projects the note's sections are tagged with, in order of first appearance. */
   projectsOf(noteId: string): Promise<NoteProject[]>;
-  /** Project ids the note's sections were tagged with at the last save. */
-  taggedProjectIds(noteId: string): Promise<string[]>;
-  /** The note's stored updates (its tagged sections with something written), as last saved. */
-  sectionsOf(noteId: string): Promise<{ projectId: string; content: EditorDoc }[]>;
+  /** The note's stored updates (its tagged sections with something written), as last saved, in order. */
+  sectionsOf(noteId: string): Promise<StoredSection[]>;
   /** The owner's projects among `ids`, with their status (others' and missing ids are left out). */
   ownedProjects(ownerId: string, ids: string[]): Promise<{ id: string; status: ProjectStatus }[]>;
   /** A new note; `id` is given when files were already stored under it (a copy's images). */
@@ -83,7 +94,7 @@ export interface NotesRepository {
     version: number,
     changes: { title?: string; content?: EditorDoc; text?: string },
   ): Promise<{ version: number; updatedAt: Date } | null>;
-  /** Replaces the note's derived section rows with its tagged sections. */
+  /** Replaces the note's derived section rows with its tagged sections (in one statement). */
   replaceSections(noteId: string, sections: ProjectSection[]): Promise<void>;
   remove(noteId: string): Promise<void>;
   /** Storage keys of a note's images (to delete the files after the note). */
@@ -93,7 +104,13 @@ export interface NotesRepository {
   /** Records an image already stored under the note's folder (a copied one), with its own id. */
   addAttachment(noteId: string, image: NoteAttachmentRow): Promise<void>;
   /** The project's sections in the owner's notes, newest note first; one row more than `limit` means more follow. */
-  updatesForProject(projectId: string, ownerId: string, page: { offset: number; limit: number }): Promise<UpdateRow[]>;
+  /** The sections tagged with the project, by their note's creation (newest or oldest first), then their place in it. */
+  updatesForProject(
+    projectId: string,
+    ownerId: string,
+    page: { offset: number; limit: number },
+    order?: UpdateOrder,
+  ): Promise<UpdateRow[]>;
   /** The meetings the note is linked to, oldest first. */
   meetingsOf(noteId: string, today: string): Promise<NoteMeeting[]>;
   /**
@@ -106,8 +123,9 @@ export interface NotesRepository {
 }
 
 // content_text has one line per paragraph, heading or list item: lines are joined with " · " so "Done" and "Next"
-// do not run into the sentence after them; other whitespace collapses to one space.
-const SNIPPET = `left(btrim(regexp_replace(regexp_replace(n.content_text, '\\s*\\n\\s*', ' · ', 'g'), '\\s+', ' ', 'g')), ${SNIPPET_LENGTH})`;
+// do not run into the sentence after them; other whitespace collapses to one space. Only the start of the text is
+// read: a snippet never needs more.
+const SNIPPET = `left(btrim(regexp_replace(regexp_replace(left(n.content_text, ${SNIPPET_LENGTH * 4}), '\\s*\\n\\s*', ' · ', 'g'), '\\s+', ' ', 'g')), ${SNIPPET_LENGTH})`;
 
 // The projects a note's sections are tagged with, in order of first appearance, as JSON.
 const PROJECTS_OF = `
@@ -130,6 +148,12 @@ const MEETINGS_OF = (todayParam: string) => `
               JOIN meeting_series s ON s.id = m.series_id
               JOIN teams t ON t.id = s.team_id
              WHERE nm.note_id = n.id), '[]'::json)`;
+
+// A note's sections stay in their order either way.
+const UPDATE_ORDER: Record<UpdateOrder, string> = {
+  newest: 'n.created_at DESC, n.id DESC, s.position',
+  oldest: 'n.created_at, n.id, s.position',
+};
 
 const ORDER: Record<NoteSort, string> = {
   newest: 'n.created_at DESC, n.id DESC',
@@ -173,22 +197,30 @@ export function createNotesRepository(db: Db): NotesRepository {
     async listForUser(ownerId, filters, page, today) {
       const where = whereOf(ownerId, filters);
       const at = (i: number) => `$${where.values.length + i}`;
-      const { rows } = await db.query<NoteSummaryRow>(
-        `SELECT n.id, n.title, n.created_at AS "createdAt", n.updated_at AS "updatedAt", ${SNIPPET} AS snippet,
-                ${PROJECTS_OF} AS projects, ${MEETINGS_OF(at(3))} AS meetings
-           FROM notes n
-          WHERE ${where.sql}
-          ORDER BY ${ORDER[filters.sort]}
-          LIMIT ${at(1)} OFFSET ${at(2)}`,
+      // The page is picked first, on the few columns the order needs, with the count of every match in the same pass
+      // (a text search reads my notes once, not twice); the snippet, projects and meetings are built for that page
+      // only. Stress test, 2026-11-25: built for every note before the page was cut, the "Last edited" order or a
+      // deep page took 0.7 s for someone with 2,000 notes.
+      const { rows } = await db.query<NoteSummaryRow & { total: number }>(
+        `WITH page AS (
+           SELECT n.id, count(*) OVER () AS total
+             FROM notes n
+            WHERE ${where.sql}
+            ORDER BY ${ORDER[filters.sort]}
+            LIMIT ${at(1)} OFFSET ${at(2)}
+         )
+         SELECT n.id, n.title, n.created_at AS "createdAt", n.updated_at AS "updatedAt", ${SNIPPET} AS snippet,
+                ${PROJECTS_OF} AS projects, ${MEETINGS_OF(at(3))} AS meetings, page.total::int AS total
+           FROM page JOIN notes n ON n.id = page.id
+          ORDER BY ${ORDER[filters.sort]}`,
         [...where.values, page.limit + 1, page.offset, today],
       );
-      return rows;
-    },
-
-    async countForUser(ownerId, filters) {
-      const where = whereOf(ownerId, filters);
-      const { rows } = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM notes n WHERE ${where.sql}`, where.values);
-      return rows[0]?.n ?? 0;
+      const first = rows[0];
+      if (first) return { rows: rows.map(({ total: _total, ...row }) => row), total: first.total };
+      // A page past the end has no row to carry the count.
+      if (page.offset === 0) return { rows: [], total: 0 };
+      const counted = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM notes n WHERE ${where.sql}`, where.values);
+      return { rows: [], total: counted.rows[0]?.n ?? 0 };
     },
 
     async findOwned(noteId, ownerId) {
@@ -212,16 +244,9 @@ export function createNotesRepository(db: Db): NotesRepository {
       return rows[0]?.projects ?? [];
     },
 
-    async taggedProjectIds(noteId) {
-      const { rows } = await db.query<{ id: string }>('SELECT DISTINCT project_id AS id FROM note_sections WHERE note_id = $1', [
-        noteId,
-      ]);
-      return rows.map((row) => row.id);
-    },
-
     async sectionsOf(noteId) {
-      const { rows } = await db.query<{ projectId: string; content: EditorDoc }>(
-        'SELECT project_id AS "projectId", content FROM note_sections WHERE note_id = $1 ORDER BY position',
+      const { rows } = await db.query<StoredSection>(
+        'SELECT position, project_id AS "projectId", content FROM note_sections WHERE note_id = $1 ORDER BY position',
         [noteId],
       );
       return rows;
@@ -270,14 +295,20 @@ export function createNotesRepository(db: Db): NotesRepository {
 
     async replaceSections(noteId, sections) {
       await db.query('DELETE FROM note_sections WHERE note_id = $1', [noteId]);
-      for (const section of sections) {
-        if (!section.projectId) continue;
-        await db.query(
-          `INSERT INTO note_sections (note_id, position, project_id, content, content_text)
-           VALUES ($1, $2, $3, $4::jsonb, $5)`,
-          [noteId, section.position, section.projectId, JSON.stringify(section.content), section.text],
-        );
-      }
+      const tagged = sections.filter((section) => section.projectId);
+      if (tagged.length === 0) return;
+      await db.query(
+        `INSERT INTO note_sections (note_id, position, project_id, content, content_text)
+         SELECT $1, x.position, x.project_id, x.content, x.content_text
+           FROM unnest($2::int[], $3::uuid[], $4::jsonb[], $5::text[]) AS x(position, project_id, content, content_text)`,
+        [
+          noteId,
+          tagged.map((section) => section.position),
+          tagged.map((section) => section.projectId),
+          tagged.map((section) => JSON.stringify(section.content)),
+          tagged.map((section) => section.text),
+        ],
+      );
     },
 
     async remove(noteId) {
@@ -310,14 +341,14 @@ export function createNotesRepository(db: Db): NotesRepository {
       ]);
     },
 
-    async updatesForProject(projectId, ownerId, page) {
+    async updatesForProject(projectId, ownerId, page, order = 'newest') {
       const { rows } = await db.query<UpdateRow>(
         `SELECT s.note_id AS "noteId", n.title AS "noteTitle", s.position, s.content,
                 n.created_at AS "noteCreatedAt", n.updated_at AS "noteUpdatedAt"
            FROM note_sections s
            JOIN notes n ON n.id = s.note_id
           WHERE s.project_id = $1 AND n.user_id = $2
-          ORDER BY n.created_at DESC, n.id DESC, s.position
+          ORDER BY ${UPDATE_ORDER[order]}
           LIMIT $3 OFFSET $4`,
         [projectId, ownerId, page.limit + 1, page.offset],
       );

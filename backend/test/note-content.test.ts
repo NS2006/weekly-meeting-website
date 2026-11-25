@@ -8,10 +8,12 @@ import {
   attachmentIdsIn,
   hasContent,
   limitProjects,
+  MAX_SECTIONS,
   normalizeColor,
   plainText,
   projectSections,
   safeHref,
+  sameJson,
   sanitizeDoc,
   withAttachments,
 } from '../src/modules/notes/content.ts';
@@ -142,6 +144,19 @@ describe('project sections', () => {
     expect(result.doc.content?.[1]).toEqual(sec(A, p(t('One'))));
     expect(result.doc.content?.[2]).toEqual({ type: 'projectSection', content: [p(t('Two'))] }); // untagged
     expect(result.doc.content?.[3]).toEqual(sec(A, p(t('Three')))); // lower-cased
+  });
+
+  it('takes at most MAX_SECTIONS project parts in a note (stress-test review)', () => {
+    const parts = (n: number) => doc(...Array.from({ length: n }, (_, i) => sec(A, p(t(`Part ${i}`)))));
+    expect(refused(parts(MAX_SECTIONS))).toBeNull();
+    expect(refused(parts(MAX_SECTIONS + 1))).toBe('content');
+  });
+
+  it('tells the same JSON whatever the order of its keys (as PostgreSQL stores it)', () => {
+    expect(sameJson({ type: 'doc', content: [{ type: 'text', text: 'a', marks: [{ type: 'bold' }] }] }, { content: [{ marks: [{ type: 'bold' }], text: 'a', type: 'text' }], type: 'doc' })).toBe(true);
+    expect(sameJson({ a: 1, b: undefined }, { a: 1 })).toBe(true);
+    expect(sameJson({ a: [1, 2] }, { a: [2, 1] })).toBe(false); // order inside a list counts
+    expect(sameJson({ a: '1' }, { a: 1 })).toBe(false);
   });
 
   it('refuses sections inside sections, lists or tables, and empty sections', () => {

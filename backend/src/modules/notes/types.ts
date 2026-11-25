@@ -46,7 +46,7 @@ export const NotesQuerySchema = z
   .strict()
   .refine((query) => !query.from || !query.to || query.from <= query.to, { message: 'from is after to', path: ['from'] });
 
-export const ProjectUpdatesQuerySchema = z.object({ offset }).strict();
+export const ProjectUpdatesQuerySchema = z.object({ offset, order: z.enum(['newest', 'oldest']).default('newest') }).strict();
 
 /** The copy's title (the note's own when not given). */
 export const CopyNoteSchema = z.object({ title: title.optional() }).strict();

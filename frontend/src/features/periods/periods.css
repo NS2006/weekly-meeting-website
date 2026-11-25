@@ -14,6 +14,25 @@
 .period-strip__more {
   align-self: flex-start;
 }
+/* "All quarters" (PeriodListDialog): current, upcoming and past, each under a small heading. */
+.period-list__now {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: var(--blue-space-3);
+}
+.period-list__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-2);
+}
+.period-list__heading {
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-sm);
+  font-weight: var(--blue-font-weight-semibold);
+}
+.period-list .paged__top:not(:empty) {
+  margin-bottom: var(--blue-space-1);
+}
 
 /* One period (on the shared .tile). */
 .period-card {
@@ -652,6 +671,30 @@
   display: flex;
   flex-direction: column;
   gap: var(--blue-space-2);
+  /* Notes far off screen are not laid out or painted until they come near (stress test, 2026-11-25: a big team's
+     quarter is thousands of notes); the browser keeps each one's size once seen, so the page does not jump. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 640px;
+}
+@media print {
+  .period-person {
+    content-visibility: visible;
+  }
+}
+/* A meeting whose part is loading keeps about the room its notes take, so the page below it does not jump. */
+.period-meeting__waiting {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-3);
+  padding-top: var(--blue-space-4);
+}
+/* A part that could not load: what happened and Try again. */
+.period-reader__more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--blue-space-3);
+  padding: var(--blue-space-6) 0;
 }
 .period-person + .period-person {
   padding-top: var(--blue-space-4);
@@ -770,6 +813,10 @@
 }
 .current-periods > li {
   display: flex;
+}
+/* Room between the pages and the cards (owner, 2026-11-25); none with one page, when there are no pages. */
+.paged__top:not(:empty) + .current-periods {
+  margin-top: var(--blue-space-4);
 }
 .current-period {
   display: grid;

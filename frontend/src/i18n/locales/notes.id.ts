@@ -307,5 +307,9 @@ export const notesId: Messages['notes'] = {
     edit: 'Ubah',
     editLabel: 'Ubah pembaruan ini di {{title}}',
     showOlder: 'Tampilkan pembaruan lebih lama',
+    showNewer: 'Tampilkan pembaruan lebih baru',
+    order: 'Urutan pembaruan',
+    newestFirst: 'Terbaru dulu',
+    oldestFirst: 'Terlama dulu',
   },
 };

@@ -1,4 +1,4 @@
-import type { EditorDoc, PeriodProject, TeamProjectMeeting, YearSplit } from '@weekly-meeting/shared';
+import type { EditorDoc, PeriodProject, TeamProjectMeeting, UpdateOrder, YearSplit } from '@weekly-meeting/shared';
 import type { Db } from '../../database/pool.ts';
 
 export interface TeamProjectUpdateRow {
@@ -28,7 +28,15 @@ export interface TeamProjectsRepository {
   /** Whether a part of the project is in a note shared on one of the team's meetings in the range. */
   isShared(teamId: string, projectId: string, range: DayRange): Promise<boolean>;
   /** The project's parts in notes shared on the team's meetings in the range, latest meeting first. */
-  updates(teamId: string, projectId: string, range: DayRange, page: { offset: number; limit: number }, today: string): Promise<TeamProjectUpdateRow[]>;
+  /** Its parts shared in the period, by their note's last meeting in it (latest or earliest first), then the note. */
+  updates(
+    teamId: string,
+    projectId: string,
+    range: DayRange,
+    page: { offset: number; limit: number },
+    today: string,
+    order?: UpdateOrder,
+  ): Promise<TeamProjectUpdateRow[]>;
 }
 
 // Only what reached the team in the period: each project part (note_sections: tagged parts with something in them) of
@@ -46,6 +54,14 @@ const SHARED = `
       JOIN note_meetings nm ON nm.note_id = s.note_id
       JOIN period_meetings pm ON pm.id = nm.meeting_id
   )`;
+
+// A part's place: its note's last meeting in the period (the month it is listed under), then the note's creation; a
+// note's parts stay in their order either way.
+const LAST_MEETING = '(SELECT max(tm.meeting_date) FROM team_meetings tm WHERE tm.note_id = s.note_id)';
+const UPDATE_ORDER: Record<UpdateOrder, string> = {
+  newest: `${LAST_MEETING} DESC, n.created_at DESC, n.id, s.position`,
+  oldest: `${LAST_MEETING}, n.created_at, n.id, s.position`,
+};
 
 export function createTeamProjectsRepository(db: Db): TeamProjectsRepository {
   return {
@@ -88,7 +104,7 @@ export function createTeamProjectsRepository(db: Db): TeamProjectsRepository {
       return rows.length > 0;
     },
 
-    async updates(teamId, projectId, range, page, today) {
+    async updates(teamId, projectId, range, page, today, order = 'newest') {
       const { rows } = await db.query<TeamProjectUpdateRow>(
         `WITH team_meetings AS (
            SELECT nm.note_id, m.id, m.meeting_date, m.title, ms.name AS series_name, m.status
@@ -109,8 +125,7 @@ export function createTeamProjectsRepository(db: Db): TeamProjectsRepository {
            FROM note_sections s
            JOIN notes n ON n.id = s.note_id
           WHERE s.project_id = $4 AND EXISTS (SELECT 1 FROM team_meetings tm WHERE tm.note_id = s.note_id)
-          ORDER BY (SELECT max(tm.meeting_date) FROM team_meetings tm WHERE tm.note_id = s.note_id) DESC,
-                   n.created_at DESC, n.id, s.position
+          ORDER BY ${UPDATE_ORDER[order]}
           LIMIT $5 OFFSET $6`,
         [teamId, range.start, range.end, projectId, page.limit + 1, page.offset, today],
       );

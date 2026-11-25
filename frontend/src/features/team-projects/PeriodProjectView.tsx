@@ -1,14 +1,16 @@
 import type { PeriodDetail, PeriodProject, TeamProjectUpdate } from '@weekly-meeting/shared';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { BlueAlert, BlueAvatar, BlueBadge, BlueButton, BlueEmptyState, BlueSkeleton } from '../../components/blue';
+import { BlueAlert, BlueAvatar, BlueBadge, BlueEmptyState, BlueSkeleton } from '../../components/blue';
 import { NotesIcon } from '../../components/icons';
+import { LoadOlder } from '../../components/LoadOlder';
 import { ApiFailure } from '../../services/api';
 import { formatDay, todayWib } from '../../utils/dates';
 import { errorLabel } from '../../utils/errorLabels';
 import { meetingName } from '../meetings/meetingName';
 import { groupByMonth } from '../notes/months';
 import { NoteContentView } from '../notes/NoteContentView';
+import { UpdateOrderSwitch, useUpdateOrder } from '../notes/UpdateOrder';
 import { ProjectMonogram } from '../projects/ProjectCard';
 import { timelineOf } from './boardModel';
 import { usePeriodProjectUpdates } from './useTeamProjects';
@@ -21,12 +23,14 @@ const lastMeetingDay = (update: TeamProjectUpdate) => update.meetings[update.mee
 
 /**
  * A teammate's project in one period, on its own page like the Projects page's (owner, 2026-11-24): whose it is, the
- * period's meetings it was shared on, then every part of a note shared on them, latest first, by month, read-only.
+ * period's meetings it was shared on, then every part of a note shared on them, latest first (or earliest first with
+ * `UpdateOrderSwitch`, owner 2026-11-25), by month, read-only.
  * Each part names its note and the meetings it is on; a meeting opens the note on that meeting's board.
  */
 export function PeriodProjectView({ period, project, projects }: { period: PeriodDetail; project: PeriodProject; projects: PeriodProject[] }) {
   const { t } = useTranslation();
-  const updates = usePeriodProjectUpdates(period.teamId, period.key, project.id);
+  const [order, setOrder] = useUpdateOrder();
+  const updates = usePeriodProjectUpdates(period.teamId, period.key, project.id, order);
   const list = updates.data?.pages.flatMap((page) => page.updates) ?? [];
   const archived = project.status === 'archived';
   const timeline = timelineOf(period.meetings, projects, todayWib());
@@ -75,6 +79,7 @@ export function PeriodProjectView({ period, project, projects }: { period: Perio
           <h2 id="period-project-updates" className="notes-panel__title">
             {t('teams.projects.updatesTitle')} <span className="notes-panel__count">{project.updateCount}</span>
           </h2>
+          {project.updateCount > 1 ? <UpdateOrderSwitch order={order} onChange={setOrder} /> : null}
         </div>
         <p className="muted small board-page__only">{t('teams.projects.onlyShared', { label: period.label })}</p>
 
@@ -88,7 +93,7 @@ export function PeriodProjectView({ period, project, projects }: { period: Perio
               </div>
             ))}
           </div>
-        ) : updates.isError ? (
+        ) : updates.isError && !updates.data ? (
           <BlueAlert variant="error">{errorLabel(code)}</BlueAlert>
         ) : list.length === 0 ? (
           <BlueEmptyState icon={<NotesIcon size={26} />} title={t('teams.projects.none', { label: period.label })}>
@@ -121,11 +126,14 @@ export function PeriodProjectView({ period, project, projects }: { period: Perio
                 </ol>
               </section>
             ))}
-            {updates.hasNextPage ? (
-              <BlueButton variant="secondary" loading={updates.isFetchingNextPage} onClick={() => void updates.fetchNextPage()}>
-                {t('teams.projects.showOlder')}
-              </BlueButton>
-            ) : null}
+            <LoadOlder
+              hasMore={updates.hasNextPage}
+              loading={updates.isFetchingNextPage}
+              failed={updates.isFetchNextPageError}
+              errorText={errorLabel(code)}
+              label={t(order === 'oldest' ? 'teams.projects.showNewer' : 'teams.projects.showOlder')}
+              onMore={() => updates.fetchNextPage()}
+            />
           </div>
         )}
       </section>
