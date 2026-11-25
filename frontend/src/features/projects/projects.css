@@ -1,5 +1,27 @@
 /* Projects: cards on the shared .tile, the project page head and its in-place edit form. BLUE tokens only. */
 
+/* The filters (owner, 2026-11-25): the words wide, then last update, shared and the order; two to a row on a narrower
+   screen with the words across. `.filter-bar.` so these win over the general filter bar (app.css), which comes later. */
+.filter-bar.project-filters {
+  grid-template-columns: minmax(200px, 2fr) repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 900px) {
+  .filter-bar.project-filters {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .project-filters > .filter-bar__search,
+  .project-filters > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+/* The results: how many, Clear filters, the cards, then the pages. Moving to another page scrolls to here. */
+.project-results {
+  scroll-margin-top: calc(var(--app-header-height, 57px) + var(--blue-space-4));
+}
+.project-results .project-grid {
+  margin: var(--blue-space-3) 0;
+}
+
 .project-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -8,6 +30,23 @@
 
 .project-card {
   min-height: 210px;
+}
+/* Just created (owner, 2026-11-25: the list stays, the new card is lit for a moment). */
+.project-card--fresh {
+  animation: project-card-fresh 2.4s var(--app-ease);
+}
+@keyframes project-card-fresh {
+  0%,
+  45% {
+    border-color: var(--blue-color-brand-primary);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue-color-brand-primary) 22%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .project-card--fresh {
+    animation: none;
+    border-color: var(--blue-color-brand-primary);
+  }
 }
 .project-card__top {
   display: flex;
@@ -108,6 +147,16 @@
 }
 .project-head__actions {
   flex-wrap: wrap;
+}
+/* Delete… at the top beside Archive (owner, 2026-11-25): a quiet red text button; the dialog asks for the name. */
+.blue-button--ghost.project-head__delete {
+  color: var(--blue-color-feedback-error);
+}
+.blue-button--ghost.project-head__delete:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--blue-color-feedback-error) 10%, transparent);
+}
+.project-head .page-head__title:focus {
+  outline: none;
 }
 .project-description {
   max-width: 72ch;

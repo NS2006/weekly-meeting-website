@@ -1,39 +1,34 @@
-import { useState } from 'react';
-import type { ProjectSort, ProjectStatus, ProjectsQuery } from '@weekly-meeting/shared';
+import { useEffect, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { useLocation, useNavigate } from 'react-router';
-import {
-  BlueAlert,
-  BlueButton,
-  BlueCard,
-  BlueEmptyState,
-  BlueSelect,
-  BlueTabs,
-  tabPanelProps,
-} from '../../components/blue';
+import { Link, useLocation } from 'react-router';
+import { BlueAlert, BlueButton, BlueCard, BlueEmptyState, BlueTabs, tabPanelProps } from '../../components/blue';
 import { EntityName } from '../../components/EntityName';
 import { NotesIcon } from '../../components/icons';
-import { SearchField } from '../../components/SearchField';
+import { Paged } from '../../components/Paged';
 import { ApiFailure } from '../../services/api';
 import { errorLabel } from '../../utils/errorLabels';
+import { readPage } from '../../utils/pageParam';
 import { useFilterParams } from '../../utils/useFilterParams';
+import { CLEARED, isFiltered, PROJECTS_PER_PAGE, projectsQuery, readProjectFilters, readProjectStatus } from './listFilters';
 import { NewProjectTile, ProjectCard, ProjectCardSkeleton } from './ProjectCard';
+import { ProjectFilters } from './ProjectFilters';
 import { ProjectFormDialog } from './ProjectFormDialog';
 import { useCreateProject, useProjects } from './useProjects';
 import './projects.css';
 
-const SORTS: readonly string[] = ['updated', 'name', 'newest'];
 const codeOf = (error: unknown) => (error instanceof ApiFailure ? error.code : error ? 'unknown_error' : null);
 
 /**
- * The Projects page: my own projects as cards, Active or Archived, searched and sorted on the server. Everything
- * lives in the address (?status=archived&q=…&sort=name), so Back, reload and a shared link keep it.
+ * The Projects page: my own projects as cards, Active or Archived, 12 to a page (owner, 2026-11-25), filtered, sorted
+ * and counted on the server: words, when the updates were last written, where they are shared, and the order.
+ * Everything lives in the address (?status=archived&activity=quiet&page=2), so Back, reload and a shared link keep it;
+ * a new filter or tab starts from the first page. A new project stays on the list (owner, 2026-11-25): Active, page 1,
+ * no filters, newest first, so it shows at the top, lit for a moment, with "<name> was created · Open it".
  */
 export function ProjectsOverview() {
   const { t } = useTranslation();
-  const filterParams = useFilterParams();
+  const params = useFilterParams();
   const location = useLocation();
-  const navigate = useNavigate();
   const create = useCreateProject();
   const [creating, setCreating] = useState(false);
   // After a delete the detail page sends us here with the name, to confirm what happened.
@@ -41,22 +36,38 @@ export function ProjectsOverview() {
     const state = location.state as { deletedName?: unknown } | null;
     return typeof state?.deletedName === 'string' ? state.deletedName : null;
   });
+  const [created, setCreated] = useState<{ id: string; name: string } | null>(null);
+  const top = useRef<HTMLDivElement>(null);
 
-  const status: ProjectStatus = filterParams.get('status') === 'archived' ? 'archived' : 'active';
-  const sortParam = filterParams.get('sort');
-  const query: ProjectsQuery = {
-    status,
-    q: filterParams.get('q') || undefined,
-    sort: SORTS.includes(sortParam) ? (sortParam as ProjectSort) : undefined,
-  };
-  const searching = Boolean(query.q);
-  const projects = useProjects(query);
+  const status = readProjectStatus(params.get);
+  const filters = readProjectFilters(params.get);
+  const page = readPage(params.get);
+  const projects = useProjects(projectsQuery(status, filters, page));
   const list = projects.data?.projects ?? [];
+  const total = projects.data?.total ?? 0;
   const counts = projects.data?.counts;
+  const lastPage = Math.max(1, Math.ceil(total / PROJECTS_PER_PAGE));
+  const filtered = isFiltered(filters);
   const error = codeOf(projects.error);
   const here = `${location.pathname}${location.search}`;
-  const hasAny = counts ? counts.active + counts.archived > 0 : false;
+  // A brand-new person has nothing to filter yet: the filters wait for the first project.
+  const hasAny = filtered || (counts ? counts.active + counts.archived > 0 : false);
 
+  // A page past the end (the last project on it archived, or an old link) goes to the last page there is.
+  const { update } = params;
+  useEffect(() => {
+    if (projects.data && !projects.isPlaceholderData && page > lastPage) update({ page: lastPage > 1 ? String(lastPage) : '' });
+  }, [projects.data, projects.isPlaceholderData, page, lastPage, update]);
+
+  const change = (patch: Record<string, string | undefined>) => {
+    setDeletedName(null);
+    setCreated(null);
+    params.update({ ...patch, page: '' }); // a new filter or tab starts from the first page
+  };
+  const goTo = (next: number) => {
+    params.update({ page: next > 1 ? String(next) : '' });
+    top.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  };
   const startCreating = () => {
     create.reset();
     setCreating(true);
@@ -75,6 +86,16 @@ export function ProjectsOverview() {
       </div>
 
       <div className="stack">
+        {created ? (
+          <BlueAlert variant="success" onDismiss={() => setCreated(null)}>
+            <span className="row" style={{ flexWrap: 'wrap' }}>
+              <Trans i18nKey="projects.overview.created" components={{ name: <EntityName>{created.name}</EntityName> }} />
+              <Link to={`/projects/${created.id}`} state={{ from: here }}>
+                {t('projects.overview.openCreated')}
+              </Link>
+            </span>
+          </BlueAlert>
+        ) : null}
         {deletedName ? (
           <BlueAlert variant="success" onDismiss={() => setDeletedName(null)}>
             <Trans i18nKey="projects.overview.deleted" components={{ name: <EntityName>{deletedName}</EntityName> }} />
@@ -86,44 +107,14 @@ export function ProjectsOverview() {
           label={t('projects.overview.tabs')}
           idPrefix="projects"
           value={status}
-          onChange={(next) => filterParams.update({ status: next === 'archived' ? 'archived' : undefined })}
+          onChange={(next) => change({ status: next === 'archived' ? 'archived' : '' })}
           tabs={[
             { id: 'active', label: `${t('projects.overview.active')}${counts ? ` (${counts.active})` : ''}` },
             { id: 'archived', label: `${t('projects.overview.archived')}${counts ? ` (${counts.archived})` : ''}` },
           ]}
         />
 
-        {hasAny || searching ? (
-          <>
-            <div className="filter-bar" role="search" aria-label={t('projects.overview.filter')}>
-              <SearchField
-                className="filter-bar__search"
-                label={t('projects.overview.search')}
-                placeholder={t('projects.overview.searchPlaceholder')}
-                value={query.q ?? ''}
-                onCommit={(q) => filterParams.update({ q })}
-              />
-              <BlueSelect<ProjectSort>
-                label={t('projects.overview.sortBy')}
-                value={query.sort ?? 'updated'}
-                onChange={(sort) => filterParams.update({ sort: sort === 'updated' ? undefined : sort })}
-                options={[
-                  { value: 'updated', label: t('projects.overview.sortUpdated') },
-                  { value: 'name', label: t('projects.overview.sortName') },
-                  { value: 'newest', label: t('projects.overview.sortNewest') },
-                ]}
-              />
-            </div>
-            {projects.data && searching ? (
-              <p className="filter-summary small" aria-live="polite">
-                <span className="muted">{t('projects.overview.matches', { count: list.length })}</span>
-                <button type="button" className="link-button" onClick={() => filterParams.update({ q: undefined })}>
-                  {t('projects.overview.clearSearch')}
-                </button>
-              </p>
-            ) : null}
-          </>
-        ) : null}
+        {hasAny ? <ProjectFilters value={filters} onChange={change} /> : null}
 
         <div {...tabPanelProps('projects', status)}>
           {error ? (
@@ -137,17 +128,18 @@ export function ProjectsOverview() {
             </div>
           ) : list.length === 0 ? (
             <BlueCard>
-              {searching ? (
+              {filtered ? (
                 <BlueEmptyState
                   icon={<NotesIcon size={26} />}
                   title={t('projects.overview.noMatch')}
                   action={
-                    <BlueButton variant="secondary" onClick={() => filterParams.update({ q: undefined })}>
-                      {t('projects.overview.clearSearch')}
+                    <BlueButton variant="secondary" onClick={() => change(CLEARED)}>
+                      {t('projects.overview.clearFilters')}
                     </BlueButton>
                   }
                 >
-                  {status === 'active' ? t('projects.overview.tryOtherArchived') : t('projects.overview.tryOther')}
+                  {/* "Look in Archived" only when something there matches. */}
+                  {status === 'active' && (counts?.archived ?? 0) > 0 ? t('projects.overview.tryOtherArchived') : t('projects.overview.tryOther')}
                 </BlueEmptyState>
               ) : status === 'archived' ? (
                 <BlueEmptyState icon={<NotesIcon size={26} />} title={t('projects.overview.noArchived')}>
@@ -168,11 +160,41 @@ export function ProjectsOverview() {
               )}
             </BlueCard>
           ) : (
-            <div className={`project-grid tile-grid${projects.isPlaceholderData ? ' is-refreshing' : ''}`}>
-              {list.map((project) => (
-                <ProjectCard key={project.id} project={project} from={here} />
-              ))}
-              {status === 'active' && !searching ? <NewProjectTile onClick={startCreating} /> : null}
+            <div className="project-results" ref={top}>
+              <Paged
+                current={page}
+                total={total}
+                pageSize={PROJECTS_PER_PAGE}
+                label={t('projects.overview.pages')}
+                disabled={projects.isPlaceholderData}
+                onChange={goTo}
+                head={
+                  <>
+                    <span className="project-results__count" role="status">
+                      {lastPage > 1
+                        ? t('projects.overview.range', {
+                            from: (page - 1) * PROJECTS_PER_PAGE + 1,
+                            to: (page - 1) * PROJECTS_PER_PAGE + list.length,
+                            count: total,
+                          })
+                        : t('projects.overview.count', { count: total })}
+                    </span>
+                    {filtered ? (
+                      <button type="button" className="link-button" onClick={() => change(CLEARED)}>
+                        {t('projects.overview.clearFilters')}
+                      </button>
+                    ) : null}
+                  </>
+                }
+              >
+                <div className={`project-grid tile-grid${projects.isPlaceholderData ? ' is-refreshing' : ''}`}>
+                  {list.map((project) => (
+                    <ProjectCard key={project.id} project={project} from={here} fresh={created?.id === project.id} />
+                  ))}
+                  {/* "New project" ends the whole list: on its last page, when nothing narrows it. */}
+                  {status === 'active' && !filtered && page === lastPage ? <NewProjectTile onClick={startCreating} /> : null}
+                </div>
+              </Paged>
             </div>
           )}
         </div>
@@ -187,7 +209,11 @@ export function ProjectsOverview() {
           create.mutate(values, {
             onSuccess: ({ project }) => {
               setCreating(false);
-              void navigate(`/projects/${project.id}`, { state: { from: here } });
+              // Back to where the new project shows first: Active, page 1, no filters, recently updated (or newest).
+              params.update({ ...CLEARED, status: '', sort: filters.sort === 'newest' ? 'newest' : '' });
+              setDeletedName(null);
+              setCreated({ id: project.id, name: project.name });
+              window.scrollTo({ top: 0, behavior: 'smooth' });
             },
           })
         }

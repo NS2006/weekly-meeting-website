@@ -16,8 +16,11 @@ export function ProjectMonogram({ name, archived, size = 'md' }: { name: string;
   );
 }
 
-/** One project as a summary card; the whole card opens it. `from` is where its back link should return. */
-export function ProjectCard({ project, from }: { project: ProjectSummary; from?: string }) {
+/**
+ * One project as a summary card; the whole card opens it. `from` is where its back link should return; `fresh` lights
+ * it for a moment (just created).
+ */
+export function ProjectCard({ project, from, fresh = false }: { project: ProjectSummary; from?: string; fresh?: boolean }) {
   const { t } = useTranslation();
   const archived = project.status === 'archived';
   // "No updates yet", "1 update", "3 updates": how many of my notes have a section for the project.
@@ -27,7 +30,7 @@ export function ProjectCard({ project, from }: { project: ProjectSummary; from?:
     <Link
       to={`/projects/${project.id}`}
       state={from ? { from } : undefined}
-      className={`tile tile--link project-card${archived ? ' project-card--archived' : ''}`}
+      className={`tile tile--link project-card${archived ? ' project-card--archived' : ''}${fresh ? ' project-card--fresh' : ''}`}
     >
       <span className="project-card__top">
         <ProjectMonogram name={project.name} archived={archived} />

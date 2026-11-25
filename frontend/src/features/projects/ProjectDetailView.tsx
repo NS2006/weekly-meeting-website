@@ -2,7 +2,8 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import type { ProjectDetail } from '@weekly-meeting/shared';
 import { Trans, useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
-import { BlueAlert, BlueBadge, BlueButton, BlueCard, BlueInput } from '../../components/blue';
+import { BackToTop } from '../../components/BackToTop';
+import { BlueAlert, BlueBadge, BlueButton, BlueInput } from '../../components/blue';
 import { EntityName } from '../../components/EntityName';
 import { TypeNameDialog } from '../../components/TypeNameDialog';
 import { ApiFailure } from '../../services/api';
@@ -20,7 +21,9 @@ type Notice = 'saved' | 'restored' | 'archived';
 
 /**
  * One of my projects: edit its name and description in place, archive or restore it (archiving can be undone at
- * once), and delete it for good by typing its name. Below: its updates (the parts of my notes tagged with it).
+ * once), and delete it for good by typing its name; all three at the top (owner, 2026-11-25: Delete… beside Archive,
+ * not at the bottom of a long page). Below: its updates (the parts of my notes tagged with it), and "Back to top" once
+ * the page is scrolled.
  */
 export function ProjectDetailView({ project }: { project: ProjectDetail }) {
   const { t } = useTranslation();
@@ -30,6 +33,7 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }) {
   const [editing, setEditing] = useState<false | 'name' | 'description'>(false);
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const title = useRef<HTMLHeadingElement>(null);
   const archived = project.status === 'archived';
   const outsideError = !editing ? codeOf(update.error) : null;
 
@@ -70,7 +74,9 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }) {
             <div className="project-head">
               <ProjectMonogram name={project.name} archived={archived} size="lg" />
               <div className="project-head__text">
-                <h1 className="page-head__title">{project.name}</h1>
+                <h1 className="page-head__title" ref={title} tabIndex={-1}>
+                  {project.name}
+                </h1>
                 <span className="project-head__meta muted small">
                   {t('projects.detail.meta', { date: formatDate(project.createdAt), when: relativeDate(project.updatedAt) })}
                   {archived ? <BlueBadge>{t('projects.detail.archived')}</BlueBadge> : null}
@@ -103,6 +109,17 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }) {
                   </BlueButton>
                 </>
               )}
+              <BlueButton
+                variant="ghost"
+                className="project-head__delete"
+                title={t('projects.detail.deleteLead')}
+                onClick={() => {
+                  remove.reset();
+                  setDeleting(true);
+                }}
+              >
+                {t('projects.detail.deleteButton')}
+              </BlueButton>
             </div>
           </div>
 
@@ -148,21 +165,7 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }) {
       ) : null}
 
       <ProjectUpdates project={project} />
-
-      <BlueCard title={t('projects.detail.deleteTitle')} className="danger-zone">
-        <div className="danger-zone__row">
-          <p className="muted">{t('projects.detail.deleteLead')}</p>
-          <BlueButton
-            variant="danger"
-            onClick={() => {
-              remove.reset();
-              setDeleting(true);
-            }}
-          >
-            {t('projects.detail.deleteButton')}
-          </BlueButton>
-        </div>
-      </BlueCard>
+      <BackToTop focusTarget={title} />
 
       <TypeNameDialog
         open={deleting}
@@ -179,6 +182,7 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }) {
         }
       >
         {t('projects.detail.confirmBody')}
+        {archived ? null : ` ${t('projects.detail.confirmArchiveHint')}`}
       </TypeNameDialog>
     </div>
   );
