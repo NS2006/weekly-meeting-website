@@ -38,9 +38,19 @@ export const meetingsEn = {
   // Home: NextMeetings
   next: {
     title: 'Your next meetings',
-    empty: 'No meetings in the next two weeks',
+    empty: 'No meetings in the next four weeks',
     emptyBody: 'When a team leader sets a meeting schedule, the dates show up here. Open <teams>Teams</teams> to see your teams.',
-    more: "More meetings are on each team's page.",
+    showAll: 'Show all {{count}} meetings of the next 4 weeks',
+    showFewer: 'Show fewer',
+    pages: 'Pages of your next meetings',
+    range: '{{from}}–{{to}} of {{count}} meetings in the next 4 weeks',
+  },
+  // The team page's next meetings (TeamNextMeetings).
+  teamNext: {
+    title: 'Next meetings',
+    loading: 'Loading the next meetings',
+    empty: 'No meetings in the next four weeks.',
+    more: 'Every meeting is on its quarter’s page below.',
   },
   // MeetingPage
   page: {
@@ -214,14 +224,4 @@ export const meetingsEn = {
       'All its meetings, past and upcoming, are deleted too. This cannot be undone. To only stop new meetings, stop the schedule instead.',
   },
   // TeamMeetingsPanel: the team's meetings
-  list: {
-    title: 'Meetings',
-    which: 'Which meetings',
-    upcoming: 'Upcoming',
-    past: 'Past',
-    noUpcoming: 'No upcoming meetings. A stopped schedule makes none.',
-    ahead: 'Meetings appear four weeks ahead.',
-    noPast: 'No past meetings yet.',
-    more: 'Show more',
-  },
 } as const;

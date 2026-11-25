@@ -35,10 +35,19 @@ export const meetingsId: Messages['meetings'] = {
   },
   next: {
     title: 'Rapat Anda berikutnya',
-    empty: 'Tidak ada rapat dalam dua minggu ke depan',
+    empty: 'Tidak ada rapat dalam empat minggu ke depan',
     // Page names stay in English (owner, 2026-11-24): the link is the Teams page.
     emptyBody: 'Saat ketua tim membuat jadwal rapat, tanggalnya muncul di sini. Buka <teams>Teams</teams> untuk melihat tim Anda.',
-    more: 'Rapat lainnya ada di halaman masing-masing tim.',
+    showAll: 'Tampilkan semua {{count}} rapat dalam 4 minggu ke depan',
+    showFewer: 'Tampilkan lebih sedikit',
+    pages: 'Halaman rapat Anda berikutnya',
+    range: '{{from}}–{{to}} dari {{count}} rapat dalam 4 minggu ke depan',
+  },
+  teamNext: {
+    title: 'Rapat berikutnya',
+    loading: 'Memuat rapat berikutnya',
+    empty: 'Tidak ada rapat dalam empat minggu ke depan.',
+    more: 'Semua rapat ada di halaman kuartalnya di bawah.',
   },
   page: {
     home: 'Home',
@@ -197,15 +206,5 @@ export const meetingsId: Messages['meetings'] = {
     deleteConfirm: 'Hapus jadwal',
     deleteBody:
       'Semua rapatnya, yang lalu maupun mendatang, ikut terhapus. Tindakan ini tidak bisa diurungkan. Untuk hanya menghentikan rapat baru, hentikan jadwalnya saja.',
-  },
-  list: {
-    title: 'Rapat',
-    which: 'Pilih rapat',
-    upcoming: 'Mendatang',
-    past: 'Lalu',
-    noUpcoming: 'Tidak ada rapat mendatang. Jadwal yang dihentikan tidak membuat rapat.',
-    ahead: 'Rapat muncul hingga empat minggu ke depan.',
-    noPast: 'Belum ada rapat yang lalu.',
-    more: 'Tampilkan lebih banyak',
   },
 };

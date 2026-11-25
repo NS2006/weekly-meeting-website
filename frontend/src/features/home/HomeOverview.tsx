@@ -8,8 +8,8 @@ import { formatLongDate, greeting } from '../../utils/dates';
 import './home.css';
 
 /**
- * Home: a greeting, then for a user the next meetings and each team's current period, and for an admin the people
- * waiting for access. No tiles for Notes, Projects, Teams or Users: the menu at the top already leads there (owner,
+ * Home: a greeting, then for a user each team's current period and then the next meetings (owner, 2026-11-25: the
+ * periods first), and for an admin the people waiting for access. No tiles for Notes, Projects, Teams or Users: the menu at the top already leads there (owner,
  * 2026-11-24).
  */
 export function HomeOverview({ user }: { user: Me }) {
@@ -30,8 +30,8 @@ export function HomeOverview({ user }: { user: Me }) {
       </section>
 
       {admin ? <WaitingUsers /> : null}
-      {admin ? null : <NextMeetings />}
       {admin ? null : <CurrentPeriods />}
+      {admin ? null : <NextMeetings />}
     </>
   );
 }

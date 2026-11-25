@@ -759,27 +759,36 @@
 }
 
 /* Home: each team's current period. */
+/* Two to a row (owner, 2026-11-25), one on a phone; each team a box with its period, progress and a way in. */
 .current-periods {
-  display: flex;
-  flex-direction: column;
-  gap: var(--blue-space-2);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--blue-space-3);
   margin: 0;
   padding: 0;
   list-style: none;
 }
+.current-periods > li {
+  display: flex;
+}
 .current-period {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
+  flex: 1;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
   gap: var(--blue-space-4);
-  padding: var(--blue-space-3);
-  border: 1px solid transparent;
+  padding: var(--blue-space-4);
+  border: 1px solid var(--blue-color-border-default);
   border-radius: var(--blue-radius-md);
   color: inherit;
   text-decoration: none;
   transition:
     background-color var(--app-duration) var(--app-ease),
     border-color var(--app-duration) var(--app-ease);
+}
+/* A period still to come: a dashed box, like its tile. */
+.current-period--upcoming {
+  border-style: dashed;
 }
 a.current-period:hover {
   border-color: var(--blue-color-border-default);
@@ -796,9 +805,13 @@ a.current-period:focus-visible {
   min-width: 0;
 }
 .current-period__text .period-progress {
-  max-width: 360px;
+  max-width: none;
 }
 .current-period__team {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--blue-space-2);
   font-size: var(--blue-font-size-md);
   font-weight: var(--blue-font-weight-semibold);
 }
@@ -806,17 +819,19 @@ a.current-period:focus-visible {
   display: flex;
   align-items: center;
   gap: var(--blue-space-2);
+  margin-top: var(--blue-space-1);
   color: var(--blue-color-brand-primary-active);
   font-weight: var(--blue-font-weight-semibold);
-  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  .current-periods {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 @media (max-width: 600px) {
   .current-period {
-    grid-template-columns: auto minmax(0, 1fr);
     gap: var(--blue-space-3);
-  }
-  .current-period__go {
-    grid-column: 2;
+    padding: var(--blue-space-3);
   }
 }
 

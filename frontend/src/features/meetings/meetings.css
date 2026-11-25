@@ -386,3 +386,24 @@ a.blue-button {
 .period-chip__state {
   font-weight: var(--blue-font-weight-regular);
 }
+
+/* The team page: its next meetings and its quarters side by side on a wide screen (owner, 2026-11-25: both in view
+   without scrolling), each card as tall as the other; one above the other on a narrower one. */
+.team-overview {
+  display: grid;
+  gap: var(--blue-space-4);
+  align-items: stretch;
+}
+.team-overview > * {
+  min-width: 0;
+}
+@media (min-width: 1000px) {
+  .team-overview {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+/* The team page's next meetings: a line under the rows when more follow (on the quarters' pages). */
+.team-next__more {
+  margin: var(--blue-space-3) 0 0;
+}

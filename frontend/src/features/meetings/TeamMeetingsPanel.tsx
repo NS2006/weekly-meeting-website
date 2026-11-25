@@ -1,16 +1,7 @@
 import { useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import type { MeetingSeriesView, TeamDetail } from '@weekly-meeting/shared';
-import {
-  BlueAlert,
-  BlueBadge,
-  BlueButton,
-  BlueCard,
-  BlueEmptyState,
-  BlueSkeleton,
-  BlueTabs,
-  tabPanelProps,
-} from '../../components/blue';
+import { BlueAlert, BlueBadge, BlueButton, BlueCard, BlueEmptyState, BlueSkeleton } from '../../components/blue';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { EntityName } from '../../components/EntityName';
 import { CalendarIcon } from '../../components/icons';
@@ -18,16 +9,9 @@ import { ApiFailure } from '../../services/api';
 import { describeDays, formatDay, relativeDay, todayWib } from '../../utils/dates';
 import { errorLabel } from '../../utils/errorLabels';
 import { PeriodStrip } from '../periods/PeriodStrip';
-import { MeetingRow, MeetingRowsSkeleton } from './MeetingParts';
 import { SeriesFormDialog } from './SeriesFormDialog';
-import {
-  useCreateSeries,
-  useDeleteSeries,
-  usePastTeamMeetings,
-  useSeries,
-  useUpcomingTeamMeetings,
-  useUpdateSeries,
-} from './useMeetings';
+import { TeamNextMeetings } from './TeamNextMeetings';
+import { useCreateSeries, useDeleteSeries, useSeries, useUpdateSeries } from './useMeetings';
 import './meetings.css';
 
 type Dialog =
@@ -39,7 +23,11 @@ type Dialog =
 
 const codeOf = (error: unknown) => (error instanceof ApiFailure ? error.code : error ? 'unknown_error' : null);
 
-/** The team page's Meetings tab: the schedules (the leader sets them up) and the team's meetings. */
+/**
+ * The team page's Meetings tab: its next 3 meetings (owner, 2026-11-25: a way straight to the next one), the team's
+ * quarters, and its schedules (the leader sets them up). Every meeting is on its quarter's page (owner, 2026-11-24:
+ * no Upcoming/Past list here).
+ */
 export function TeamMeetingsPanel({ team }: { team: TeamDetail }) {
   const { t } = useTranslation();
   const series = useSeries(team.id);
@@ -66,8 +54,14 @@ export function TeamMeetingsPanel({ team }: { team: TeamDetail }) {
 
   return (
     <div className="stack">
-      {/* The team's quarters, once it has a schedule (before that there is nothing in them). */}
-      {list.length > 0 ? <PeriodStrip team={team} /> : null}
+      {/* The next meetings and the team's quarters, once it has a schedule (before that there is nothing in them): side
+          by side on a wide screen (owner, 2026-11-25: the quarters in view without scrolling), stacked on a narrow one. */}
+      {list.length > 0 ? (
+        <div className="team-overview">
+          <TeamNextMeetings team={team} />
+          <PeriodStrip team={team} />
+        </div>
+      ) : null}
       <BlueCard
         header={
           <header className="blue-card__header row card-head">
@@ -168,8 +162,6 @@ export function TeamMeetingsPanel({ team }: { team: TeamDetail }) {
         )}
       </BlueCard>
 
-      {list.length > 0 ? <TeamMeetingList teamId={team.id} today={today} /> : null}
-
       <SeriesFormDialog
         open={dialog?.kind === 'create'}
         defaultName={list.length === 0 ? t('meetings.schedules.defaultName') : ''}
@@ -238,79 +230,5 @@ export function TeamMeetingsPanel({ team }: { team: TeamDetail }) {
         {t('meetings.schedules.deleteBody')}
       </ConfirmDialog>
     </div>
-  );
-}
-
-/** Upcoming and past meetings of the team, newest past first, with "Show more". */
-function TeamMeetingList({ teamId, today }: { teamId: string; today: string }) {
-  const { t } = useTranslation();
-  const [when, setWhen] = useState<'upcoming' | 'past'>('upcoming');
-  const upcoming = useUpcomingTeamMeetings(teamId);
-  const past = usePastTeamMeetings(teamId, when === 'past');
-  const idPrefix = `team-${teamId}-meetings`;
-
-  const upcomingList = upcoming.data?.meetings ?? [];
-  const pastList = past.data?.pages.flatMap((page) => page.meetings) ?? [];
-  const error = when === 'upcoming' ? codeOf(upcoming.error) : codeOf(past.error);
-
-  return (
-    <BlueCard
-      header={
-        <header className="blue-card__header row card-head">
-          <span>{t('meetings.list.title')}</span>
-          <BlueTabs
-            variant="segmented"
-            label={t('meetings.list.which')}
-            idPrefix={idPrefix}
-            value={when}
-            onChange={setWhen}
-            tabs={[
-              { id: 'upcoming', label: t('meetings.list.upcoming') },
-              { id: 'past', label: t('meetings.list.past') },
-            ]}
-          />
-        </header>
-      }
-    >
-      <div {...tabPanelProps(idPrefix, when)}>
-        {error ? (
-          <BlueAlert variant="error">{errorLabel(error)}</BlueAlert>
-        ) : when === 'upcoming' ? (
-          upcoming.isPending ? (
-            <MeetingRowsSkeleton />
-          ) : upcomingList.length === 0 ? (
-            <p className="muted">{t('meetings.list.noUpcoming')}</p>
-          ) : (
-            <>
-              <ul className="meeting-list">
-                {upcomingList.map((m) => (
-                  <MeetingRow key={m.id} meeting={m} today={today} />
-                ))}
-              </ul>
-              <p className="muted small meeting-list__foot">{t('meetings.list.ahead')}</p>
-            </>
-          )
-        ) : past.isPending ? (
-          <MeetingRowsSkeleton />
-        ) : pastList.length === 0 ? (
-          <p className="muted">{t('meetings.list.noPast')}</p>
-        ) : (
-          <>
-            <ul className="meeting-list">
-              {pastList.map((m) => (
-                <MeetingRow key={m.id} meeting={m} today={today} />
-              ))}
-            </ul>
-            {past.hasNextPage ? (
-              <div className="meeting-list__foot">
-                <BlueButton variant="ghost" size="sm" loading={past.isFetchingNextPage} onClick={() => void past.fetchNextPage()}>
-                  {t('meetings.list.more')}
-                </BlueButton>
-              </div>
-            ) : null}
-          </>
-        )}
-      </div>
-    </BlueCard>
   );
 }

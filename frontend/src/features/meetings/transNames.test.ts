@@ -30,9 +30,12 @@ describe('names and days inside translated sentences', () => {
 
 describe('links inside translated sentences', () => {
   it('hold their own words', () => {
+    // (Was the Project menu's "Create one on the Projects page" link; that menu now creates projects itself.)
     const html = renderToStaticMarkup(
-      createElement(Trans, { i18nKey: 'notes.projectMenu.none', components: { page: createElement('a', { href: '/projects' }) } } as never),
+      createElement(Trans, { i18nKey: 'notes.page.notFoundBody', components: { page: createElement('a', { href: '/notes' }) } } as never),
     );
-    expect(html).toBe('No active projects yet. <a href="/projects">Create one on the Projects page.</a>');
+    expect(html).toBe(
+      "It may have been deleted. Only its owner can open a note here; teammates read shared notes on the meeting&#x27;s page. <a href=\"/notes\">Your notes</a>",
+    );
   });
 });

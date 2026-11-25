@@ -22,24 +22,6 @@ export function useSeries(teamId: string) {
   return useQuery({ queryKey: [...SERIES_KEY, teamId], queryFn: () => api.listSeries(teamId) });
 }
 
-export function useUpcomingTeamMeetings(teamId: string) {
-  return useQuery({
-    queryKey: [...MEETINGS_KEY, 'team', teamId, 'upcoming'],
-    queryFn: () => api.teamMeetings(teamId, 'upcoming'),
-  });
-}
-
-/** Past meetings, newest first, a page at a time ("Show more"). Loads only once the Past tab is opened. */
-export function usePastTeamMeetings(teamId: string, enabled: boolean) {
-  return useInfiniteQuery({
-    queryKey: [...MEETINGS_KEY, 'team', teamId, 'past'],
-    queryFn: ({ pageParam }) => api.teamMeetings(teamId, 'past', pageParam),
-    initialPageParam: 0,
-    getNextPageParam: (last, pages) => (last.hasMore ? pages.reduce((n, page) => n + page.meetings.length, 0) : undefined),
-    enabled,
-  });
-}
-
 /** The Meetings page: every upcoming meeting of my teams, filtered on the server. Old results stay while new load. */
 export function useMyMeetings(filters: MyMeetingsFilters, enabled: boolean) {
   return useQuery({
@@ -62,9 +44,22 @@ export function useMyPastMeetings(filters: MyMeetingsFilters, enabled: boolean) 
   });
 }
 
-/** The next two weeks of meetings across my teams (Home). */
-export function useMyUpcomingMeetings() {
-  return useQuery({ queryKey: [...MEETINGS_KEY, 'mine'], queryFn: () => api.upcomingMeetings() });
+/** A page of the next four weeks of meetings across my teams (Home); the page shown stays while the next loads. */
+export function useMyUpcomingMeetings(page: { offset: number; limit: number }) {
+  return useQuery({
+    queryKey: [...MEETINGS_KEY, 'mine', page],
+    queryFn: () => api.upcomingMeetings(page),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** The team page's next meetings: the first `limit` of the team's meetings from today on. */
+export function useTeamNextMeetings(teamId: string, limit: number, enabled: boolean) {
+  return useQuery({
+    queryKey: [...MEETINGS_KEY, 'team', teamId, 'next', limit],
+    queryFn: () => api.teamNextMeetings(teamId, limit),
+    enabled,
+  });
 }
 
 /**
