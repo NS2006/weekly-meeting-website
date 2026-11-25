@@ -30,6 +30,11 @@ export function createTeamsRoutes(service: TeamsService): Router {
   router.patch('/teams/:id', team, validate('body', UpdateTeamSchema), c.update);
   router.delete('/teams/:id', team, validate('body', DeleteTeamSchema), c.archive);
   router.post('/teams/:id/restore', team, c.restore);
+  // A deleted team, for good, before its 30 days are over (owner, 2026-11-25).
+  router.delete('/teams/:id/forever', team, c.deleteForGood);
+  // Starred teams come first in my lists (owner, 2026-11-25); a star is mine only.
+  router.put('/teams/:id/star', team, c.star);
+  router.delete('/teams/:id/star', team, c.unstar);
   router.get('/teams/:id/member-suggestions', team, c.memberSuggestions);
   router.post('/teams/:id/members', team, validate('body', AddTeamMemberSchema), c.addMember);
   router.delete('/teams/:id/members/:userId', validate('params', TeamMemberParamsSchema), c.removeMember);

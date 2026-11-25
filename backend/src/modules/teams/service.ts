@@ -4,6 +4,7 @@ import type {
   TeamChoicesResponse,
   TeamDetail,
   TeamRole,
+  TeamStarResponse,
   TeamSummary,
   TeamsQuery,
   TeamsResponse,
@@ -36,6 +37,14 @@ export interface TeamsService {
   handOver(actor: AuthContext, teamId: string, userId: string): Promise<TeamDetail>;
   archive(actor: AuthContext, teamId: string, confirmName: string): Promise<TeamDetail>;
   restore(actor: AuthContext, teamId: string): Promise<TeamDetail>;
+  /**
+   * Deletes a deleted team for good before its 30 days are over (owner, 2026-11-25: from the Deleted teams list).
+   * Its leader only, and only once it is deleted (409 `team_not_deleted`): a live team is deleted with its typed
+   * name first.
+   */
+  deleteForGood(actor: AuthContext, teamId: string): Promise<void>;
+  /** Stars a team I can see, or takes the star off: only for me; 404 for a team I may not see. */
+  star(actor: AuthContext, teamId: string, starred: boolean): Promise<TeamStarResponse>;
   purgeExpired(): Promise<number>;
 }
 
@@ -52,6 +61,7 @@ function toSummary(row: TeamRow): TeamSummary {
     purgeAt: row.purgeAt ? row.purgeAt.toISOString() : null,
     periodsPerYear: row.periodsPerYear,
     yearStartMonth: row.yearStartMonth,
+    starred: row.starred,
   };
 }
 
@@ -182,6 +192,13 @@ export function createTeamsService(deps: { db: Database; logger: Logger }): Team
       return team;
     },
 
+    async star(actor, teamId, starred) {
+      // Seen as on the team page: a member, and a deleted team only for its leader.
+      if (!(await teams.findForUser(teamId, actor.user.id))) throw new AppError(404, 'not_found');
+      await teams.setStarred(teamId, actor.user.id, starred);
+      return { starred };
+    },
+
     async restore(actor, teamId) {
       const team = await inTeam(actor, teamId, { leader: true, archived: 'only' }, async ({ tx, repo, team: locked }) => {
         if (locked.archivedAt) {
@@ -194,6 +211,14 @@ export function createTeamsService(deps: { db: Database; logger: Logger }): Team
       });
       logger.info({ actorId: actor.user.id, teamId }, 'team: restored');
       return team;
+    },
+
+    async deleteForGood(actor, teamId) {
+      await inTeam(actor, teamId, { leader: true, archived: 'only' }, async ({ repo, team: locked }) => {
+        if (!locked.archivedAt) throw new AppError(409, 'team_not_deleted');
+        await repo.remove(teamId);
+      });
+      logger.info({ actorId: actor.user.id, teamId }, 'team: deleted for good');
     },
 
     purgeExpired: () => teams.purgeExpired(),

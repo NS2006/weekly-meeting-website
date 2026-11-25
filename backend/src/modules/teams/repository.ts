@@ -16,6 +16,7 @@ export interface TeamRow {
   purgeAt: Date | null;
   periodsPerYear: PeriodsPerYear;
   yearStartMonth: number;
+  starred: boolean;
 }
 
 export interface TeamMemberRow {
@@ -61,6 +62,8 @@ export interface TeamsRepository {
   suggestNonMembers(teamId: string, limit: number): Promise<{ id: string; name: string; email: string }[]>;
   setRole(teamId: string, userId: string, role: TeamRole): Promise<void>;
   setArchived(teamId: string, archived: boolean): Promise<void>;
+  /** Stars the team for this member, or takes the star off (keeps the first star's time). */
+  setStarred(teamId: string, userId: string, starred: boolean): Promise<void>;
   /**
    * For every team this user leads: lock the team, then make its longest-standing active member (earliest
    * added_at) the leader and this user a member. Teams with no other active member keep their leader.
@@ -69,6 +72,8 @@ export interface TeamsRepository {
   passLeadershipFrom(userId: string): Promise<{ teamId: string; newLeaderId: string }[]>;
   /** Deletes teams archived more than ARCHIVE_DAYS ago (members, series and meetings cascade). */
   purgeExpired(): Promise<number>;
+  /** Deletes the team for good, with what hangs on it (members, schedules, meetings, their links to notes). */
+  remove(teamId: string): Promise<void>;
 }
 
 const TEAM_SELECT = `
@@ -76,7 +81,7 @@ const TEAM_SELECT = `
          t.created_at AS "createdAt", t.archived_at AS "archivedAt",
          t.archived_at + make_interval(days => ${ARCHIVE_DAYS}) AS "purgeAt",
          t.periods_per_year AS "periodsPerYear", t.year_start_month AS "yearStartMonth",
-         me.role AS "myRole",
+         me.role AS "myRole", me.starred_at IS NOT NULL AS starred,
          l.user_id AS "leaderId", lu.name AS "leaderName",
          (SELECT count(*)::int FROM team_members c WHERE c.team_id = t.id) AS "memberCount"
     FROM teams t
@@ -125,7 +130,7 @@ export function createTeamsRepository(db: Db): TeamsRepository {
         `${TEAM_SELECT}
             AND ($2::text IS NULL OR t.name ILIKE $2 OR t.description ILIKE $2)
             AND ($3::team_role IS NULL OR me.role = $3::team_role)
-          ORDER BY t.archived_at IS NOT NULL, ${TEAM_ORDER[filters.sort ?? 'name']}`,
+          ORDER BY t.archived_at IS NOT NULL, me.starred_at IS NULL, ${TEAM_ORDER[filters.sort ?? 'name']}`,
         [userId, filters.q ? likePattern(filters.q) : null, filters.role ?? null],
       );
       return rows;
@@ -232,6 +237,14 @@ export function createTeamsRepository(db: Db): TeamsRepository {
       await db.query(`UPDATE teams SET archived_at = ${archived ? 'now()' : 'NULL'} WHERE id = $1`, [teamId]);
     },
 
+    async setStarred(teamId, userId, starred) {
+      await db.query(
+        `UPDATE team_members SET starred_at = CASE WHEN $3::boolean THEN coalesce(starred_at, now()) END
+          WHERE team_id = $1 AND user_id = $2`,
+        [teamId, userId, starred],
+      );
+    },
+
     async passLeadershipFrom(userId) {
       // Lock the teams first (id order), so a hand-over the leader started at the same moment waits for this.
       const { rows: led } = await db.query<{ team_id: string }>(
@@ -264,6 +277,10 @@ export function createTeamsRepository(db: Db): TeamsRepository {
         `DELETE FROM teams WHERE archived_at <= now() - make_interval(days => ${ARCHIVE_DAYS})`,
       );
       return rowCount ?? 0;
+    },
+
+    async remove(teamId) {
+      await db.query('DELETE FROM teams WHERE id = $1', [teamId]);
     },
   };
 }

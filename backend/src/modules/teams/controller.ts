@@ -7,6 +7,7 @@ import type {
   TeamChoicesQuery,
   TeamChoicesResponse,
   TeamResponse,
+  TeamStarResponse,
   TeamsQuery,
   TeamsResponse,
   UpdateTeamRequest,
@@ -51,6 +52,19 @@ export function createTeamsController(service: TeamsService) {
 
     restore: asyncHandler(async (_req, res) => {
       res.json({ team: await service.restore(authOf(res), params(res).id) } satisfies TeamResponse);
+    }),
+
+    deleteForGood: asyncHandler(async (_req, res) => {
+      await service.deleteForGood(authOf(res), params(res).id);
+      res.status(204).end();
+    }),
+
+    star: asyncHandler(async (_req, res) => {
+      res.json((await service.star(authOf(res), params(res).id, true)) satisfies TeamStarResponse);
+    }),
+
+    unstar: asyncHandler(async (_req, res) => {
+      res.json((await service.star(authOf(res), params(res).id, false)) satisfies TeamStarResponse);
     }),
 
     memberSuggestions: asyncHandler(async (_req, res) => {

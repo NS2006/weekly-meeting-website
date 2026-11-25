@@ -131,6 +131,8 @@ model TeamMember {
   role    TeamRole @default(member)
   addedAt DateTime @default(now()) @map("added_at") @db.Timestamptz(6)
   addedBy String?  @map("added_by") @db.Uuid
+  /// When this member starred the team (owner, 2026-11-25): starred teams come first in their lists. Null: not starred.
+  starredAt DateTime? @map("starred_at") @db.Timestamptz(6)
 
   team  Team  @relation(fields: [teamId], references: [id], onDelete: Cascade)
   user  User  @relation("membership", fields: [userId], references: [id], onDelete: Cascade)

@@ -19,6 +19,8 @@ export interface TeamSummary {
   /** How the team splits its year (4 quarters from January by default). */
   periodsPerYear: PeriodsPerYear;
   yearStartMonth: number;
+  /** I starred it (owner, 2026-11-25): starred teams come first in my lists, whatever the order picked. */
+  starred: boolean;
 }
 
 export interface TeamMemberView {
@@ -50,6 +52,11 @@ export interface TeamsQuery {
 export interface TeamsResponse {
   teams: TeamSummary[];
   archived: TeamSummary[];
+}
+
+/** PUT /api/teams/:id/star (star it) and DELETE /api/teams/:id/star (take the star off): members only. */
+export interface TeamStarResponse {
+  starred: boolean;
 }
 
 export interface TeamResponse {

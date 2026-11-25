@@ -38,6 +38,7 @@ describeDb('team management (integration)', () => {
           OR id IN (SELECT tm.team_id FROM team_members tm JOIN users u ON u.id = tm.user_id WHERE u.email LIKE $1)`,
       [`%${DOMAIN}`],
     );
+    await pool.query('DELETE FROM notes WHERE user_id IN (SELECT id FROM users WHERE email LIKE $1)', [`%${DOMAIN}`]);
     await pool.query('DELETE FROM users WHERE email LIKE $1', [`%${DOMAIN}`]);
   };
   let app: Awaited<ReturnType<typeof serve>>;
@@ -299,6 +300,38 @@ describeDb('team management (integration)', () => {
     expect((await call(member, 'GET', `/teams/${teamId}`)).status).toBe(200);
   });
 
+  it('lets the leader delete a deleted team for good; notes stay with their writers (owner, 2026-11-25)', async () => {
+    const lead = await person('Gone Lead');
+    const member = await person('Gone Member');
+    const teamId = await newTeam(lead, 'Short Lived Squad');
+    const live = await newTeam(lead, 'Still Here');
+    await call(lead, 'POST', `/teams/${teamId}/members`, { userId: member.id });
+    // A meeting of the team with the member's note on it.
+    const series = (
+      await pool.query<{ id: string }>("INSERT INTO meeting_series (team_id, name, days_of_week) VALUES ($1, 'Sync', '{4}') RETURNING id", [teamId])
+    ).rows[0]!.id;
+    const meeting = (
+      await pool.query<{ id: string }>("INSERT INTO meetings (series_id, scheduled_date, meeting_date) VALUES ($1, '2026-11-26', '2026-11-26') RETURNING id", [series])
+    ).rows[0]!.id;
+    const note = (await pool.query<{ id: string }>("INSERT INTO notes (user_id, title) VALUES ($1, 'Mine') RETURNING id", [member.id])).rows[0]!.id;
+    await pool.query('INSERT INTO note_meetings (note_id, meeting_id) VALUES ($1, $2)', [note, meeting]);
+
+    // Not before it is deleted, and only by its leader.
+    expect(await code(await call(lead, 'DELETE', `/teams/${live}/forever`))).toBe('team_not_deleted');
+    await call(lead, 'DELETE', `/teams/${teamId}`, { confirmName: 'Short Lived Squad' });
+    expect((await call(member, 'DELETE', `/teams/${teamId}/forever`)).status).toBe(404);
+    expect((await call(lead, 'DELETE', `/teams/${randomUUID()}/forever`)).status).toBe(404);
+
+    expect((await call(lead, 'DELETE', `/teams/${teamId}/forever`)).status).toBe(204);
+    expect((await pool.query('SELECT 1 FROM teams WHERE id = $1', [teamId])).rowCount).toBe(0);
+    expect((await pool.query('SELECT 1 FROM meetings WHERE id = $1', [meeting])).rowCount).toBe(0);
+    expect((await pool.query('SELECT 1 FROM notes WHERE id = $1', [note])).rowCount).toBe(1);
+    expect((await call(lead, 'POST', `/teams/${teamId}/restore`)).status).toBe(404);
+    const leadList = (await (await call(lead, 'GET', '/teams')).json()) as { teams: { id: string }[]; archived: { id: string }[] };
+    expect(leadList.archived.map((t) => t.id)).not.toContain(teamId);
+    expect(leadList.teams.map((t) => t.id)).toContain(live);
+  });
+
   it('purges teams archived more than 30 days ago, with their meeting series', async () => {
     const lead = await person('Old Team Lead');
     const fresh = await newTeam(lead, 'Fresh');
@@ -380,6 +413,56 @@ describeDb('team management (integration)', () => {
     for (const bad of ['?role=admin', '?sort=size', '?extra=1', `?q=${'x'.repeat(101)}`]) {
       expect(await code(await call(me, 'GET', `/teams${bad}`))).toBe('validation_failed');
     }
+  });
+
+  it('keeps the teams I starred first, whatever the order; a star is mine only (owner, 2026-11-25)', async () => {
+    const me = await person('Wira Star');
+    const other = await person('Xena Other');
+    const outsider = await person('Yuda Outside');
+    const alpha = await newTeam(me, 'Alpha Star');
+    const zulu = await newTeam(other, 'Zulu Star');
+    await call(other, 'POST', `/teams/${zulu}/members`, { userId: me.id });
+    await newTeam(me, 'Mike Star');
+
+    type List = { teams: { name: string; starred: boolean }[] };
+    const list = async (who: Person, query = '') => ((await (await call(who, 'GET', `/teams${query}`)).json()) as List).teams;
+    const names = async (who: Person, query = '') => (await list(who, query)).map((t) => t.name);
+    expect(await names(me)).toEqual(['Alpha Star', 'Mike Star', 'Zulu Star']);
+
+    // Starring Zulu brings it first, in every order; starring again changes nothing.
+    for (let i = 0; i < 2; i += 1) {
+      const res = await call(me, 'PUT', `/teams/${zulu}/star`);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ starred: true });
+    }
+    expect(await names(me)).toEqual(['Zulu Star', 'Alpha Star', 'Mike Star']);
+    expect(await names(me, '?sort=newest')).toEqual(['Zulu Star', 'Mike Star', 'Alpha Star']);
+    expect(await names(me, '?role=leader')).toEqual(['Alpha Star', 'Mike Star']); // filters still apply
+    expect((await list(me)).map((t) => t.starred)).toEqual([true, false, false]);
+    const team = (await (await call(me, 'GET', `/teams/${zulu}`)).json()) as { team: { starred: boolean } };
+    expect(team.team.starred).toBe(true);
+
+    // Two starred: both first, in the order picked among themselves.
+    await call(me, 'PUT', `/teams/${alpha}/star`);
+    expect(await names(me)).toEqual(['Alpha Star', 'Zulu Star', 'Mike Star']);
+
+    // My star is not the other member's.
+    expect((await list(other)).find((t) => t.name === 'Zulu Star')?.starred).toBe(false);
+
+    // Taking the star off puts it back in its place.
+    expect(await (await call(me, 'DELETE', `/teams/${zulu}/star`)).json()).toEqual({ starred: false });
+    expect(await names(me)).toEqual(['Alpha Star', 'Mike Star', 'Zulu Star']);
+
+    // Not my team: nothing to star.
+    expect(await code(await call(outsider, 'PUT', `/teams/${zulu}/star`))).toBe('not_found');
+    expect(await code(await call(outsider, 'DELETE', `/teams/${zulu}/star`))).toBe('not_found');
+    expect(await code(await call(me, 'PUT', '/teams/not-an-id/star'))).toBe('validation_failed');
+
+    // Leaving the team takes my star with it.
+    await call(me, 'PUT', `/teams/${zulu}/star`);
+    expect((await call(me, 'DELETE', `/teams/${zulu}/members/${me.id}`)).status).toBe(204);
+    await call(other, 'POST', `/teams/${zulu}/members`, { userId: me.id });
+    expect((await list(me)).find((t) => t.name === 'Zulu Star')?.starred).toBe(false);
   });
 
   it('suggests a few random active people who are not in the team yet, to its leader only', async () => {
