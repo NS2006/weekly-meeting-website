@@ -130,6 +130,7 @@ export const en = {
     user_not_active: "This person's account is not active, so they can't be added or made leader.",
     team_archived: 'This team is deleted. Restore it first.',
     team_expired: 'This team was deleted more than 30 days ago and can no longer be restored.',
+    team_not_deleted: 'This team is not deleted. Delete it from its page first.',
     confirmation_mismatch: "The name you typed doesn't match the team name.",
     meeting_in_past: "This meeting's day has passed, so it can no longer be cancelled, reopened or moved.",
     meeting_date_taken: 'This schedule already has a meeting on that day. Pick another date.',

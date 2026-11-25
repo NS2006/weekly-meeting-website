@@ -18,6 +18,8 @@ import type {
   MeetingNoteResponse,
   MeetingResponse,
   MeetingsResponse,
+  UpcomingMeetingsQuery,
+  UpcomingMeetingsResponse,
   ScheduleMeetingsResponse,
   MockSignInRequest,
   MyMeetingsQuery,
@@ -34,6 +36,7 @@ import type {
   TeamProjectUpdatesResponse,
   ProjectsQuery,
   ProjectsResponse,
+  PeriodNotesQuery,
   PeriodNotesResponse,
   PeriodResponse,
   ProjectUpdatesResponse,
@@ -41,6 +44,7 @@ import type {
   SeriesResponse,
   TeamPeriodsResponse,
   TeamResponse,
+  TeamStarResponse,
   TeamsQuery,
   TeamsResponse,
   UpdateMeetingRequest,
@@ -117,6 +121,11 @@ export const api = {
   deleteTeam: (id: string, confirmName: string) =>
     request<TeamResponse>('DELETE', `/teams/${encodeURIComponent(id)}`, { confirmName }),
   restoreTeam: (id: string) => request<TeamResponse>('POST', `/teams/${encodeURIComponent(id)}/restore`),
+  // A deleted team, for good, before its 30 days are over (its leader only).
+  deleteTeamForever: (id: string) => request<void>('DELETE', `/teams/${encodeURIComponent(id)}/forever`),
+  /** Starred teams come first in my lists; the star is mine only. */
+  starTeam: (id: string) => request<TeamStarResponse>('PUT', `/teams/${encodeURIComponent(id)}/star`),
+  unstarTeam: (id: string) => request<TeamStarResponse>('DELETE', `/teams/${encodeURIComponent(id)}/star`),
   addTeamMember: (id: string, userId: string) =>
     request<TeamResponse>('POST', `/teams/${encodeURIComponent(id)}/members`, { userId }),
   removeTeamMember: (id: string, userId: string) =>
@@ -177,9 +186,15 @@ export const api = {
   updateSeries: (id: string, body: UpdateSeriesRequest) =>
     request<SeriesResponse>('PATCH', `/series/${encodeURIComponent(id)}`, body),
   deleteSeries: (id: string) => request<void>('DELETE', `/series/${encodeURIComponent(id)}`),
-  teamMeetings: (teamId: string, when: 'upcoming' | 'past', offset = 0) =>
-    request<MeetingsResponse>('GET', `/teams/${encodeURIComponent(teamId)}/meetings?when=${when}&offset=${offset}`),
-  upcomingMeetings: () => request<MeetingsResponse>('GET', '/meetings/upcoming'),
+  /** Home: a page of my teams' meetings of the next four weeks, with how many there are. */
+  upcomingMeetings: ({ offset = 0, limit }: UpcomingMeetingsQuery = {}) =>
+    request<UpcomingMeetingsResponse>(
+      'GET',
+      `/meetings/upcoming${queryString({ offset: String(offset), limit: limit ? String(limit) : undefined })}`,
+    ),
+  // A team's meetings from today on, the first `limit` of them (the team page's next meetings).
+  teamNextMeetings: (teamId: string, limit: number) =>
+    request<MeetingsResponse>('GET', `/teams/${encodeURIComponent(teamId)}/meetings${queryString({ when: 'upcoming', limit })}`),
   myMeetings: ({ offset = 0, ...query }: MyMeetingsQuery) =>
     request<MeetingsResponse>('GET', `/meetings${queryString({ ...query, offset: String(offset) })}`),
   getMeeting: (id: string) => request<MeetingResponse>('GET', `/meetings/${encodeURIComponent(id)}`),
@@ -202,9 +217,12 @@ export const api = {
   teamPeriods: (teamId: string) => request<TeamPeriodsResponse>('GET', `/teams/${encodeURIComponent(teamId)}/periods`),
   period: (teamId: string, key: string) =>
     request<PeriodResponse>('GET', `/teams/${encodeURIComponent(teamId)}/periods/${encodeURIComponent(key)}`),
-  /** Every note of the period's meetings in full, meeting by meeting and person by person. */
-  periodNotes: (teamId: string, key: string) =>
-    request<PeriodNotesResponse>('GET', `/teams/${encodeURIComponent(teamId)}/periods/${encodeURIComponent(key)}/notes`),
+  /** The period's meetings with notes (who wrote), and the notes in full of the ones asked for (`latest`, ids or all). */
+  periodNotes: (teamId: string, key: string, query: PeriodNotesQuery = {}) =>
+    request<PeriodNotesResponse>(
+      'GET',
+      `/teams/${encodeURIComponent(teamId)}/periods/${encodeURIComponent(key)}/notes${queryString(query)}`,
+    ),
   currentPeriods: () => request<CurrentPeriodsResponse>('GET', '/periods/current'),
 };
 
@@ -238,10 +256,16 @@ export async function fetchAttachment(src: string, signal?: AbortSignal, timeout
   }
 }
 
-/** `?a=1&b=2` from the non-empty string values; '' when there are none. */
+/**
+ * `?a=1&b=2` from the non-empty string values and the finite numbers (a page's `offset: 0` included); '' when there
+ * are none.
+ */
 export function queryString(params: object): string {
   const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) if (typeof value === 'string' && value) search.set(key, value);
+  for (const [key, value] of Object.entries(params)) {
+    if (typeof value === 'string' && value) search.set(key, value);
+    else if (typeof value === 'number' && Number.isFinite(value)) search.set(key, String(value));
+  }
   const text = search.toString();
   return text ? `?${text}` : '';
 }

@@ -6,6 +6,11 @@ describe('queryString()', () => {
     expect(queryString({ q: 'a b&c', status: undefined, admin: '' })).toBe('?q=a+b%26c');
     expect(queryString({})).toBe('');
   });
+
+  it('keeps finite numbers, zero included, so a page reaches the server', () => {
+    expect(queryString({ status: 'active', offset: 0, limit: 12 })).toBe('?status=active&offset=0&limit=12');
+    expect(queryString({ offset: Number.NaN, limit: Number.POSITIVE_INFINITY })).toBe('');
+  });
 });
 
 function respond(status: number, body?: unknown) {

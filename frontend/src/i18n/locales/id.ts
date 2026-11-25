@@ -131,6 +131,7 @@ export const id: Messages = {
     user_not_active: 'Akun orang ini tidak aktif, jadi tidak bisa ditambahkan atau dijadikan ketua.',
     team_archived: 'Tim ini sudah dihapus. Pulihkan terlebih dahulu.',
     team_expired: 'Tim ini dihapus lebih dari 30 hari lalu dan tidak bisa dipulihkan lagi.',
+    team_not_deleted: 'Tim ini belum dihapus. Hapus dulu dari halamannya.',
     confirmation_mismatch: 'Nama yang Anda ketik tidak sama dengan nama tim.',
     meeting_in_past: 'Hari rapat ini sudah lewat, jadi tidak bisa dibatalkan, dibuka kembali, atau dipindahkan.',
     meeting_date_taken: 'Jadwal ini sudah punya rapat pada hari itu. Pilih tanggal lain.',
