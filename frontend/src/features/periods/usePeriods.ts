@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import type { PeriodNotesQuery } from '@weekly-meeting/shared';
 import { api } from '../../services/api';
 
 // Under the team's own key (['teams', id, …]), so a team change (a new split) refreshes its periods as well.
@@ -23,11 +24,16 @@ export function usePeriod(teamId: string, key: string) {
 }
 
 /** The whole period to read; fetched only when that tab is open. */
-export function usePeriodNotes(teamId: string, key: string, enabled: boolean) {
+/**
+ * The period's notes to read: the list of its meetings with notes, and the ones asked for in full (the latest 3 at the
+ * start). While another pick loads, the notes on screen stay (faded).
+ */
+export function usePeriodNotes(teamId: string, key: string, request: PeriodNotesQuery, enabled: boolean) {
   return useQuery({
-    queryKey: ['teams', teamId, 'periods', key, 'notes'],
-    queryFn: () => api.periodNotes(teamId, key),
+    queryKey: ['teams', teamId, 'periods', key, 'notes', request],
+    queryFn: () => api.periodNotes(teamId, key, request),
     enabled,
+    placeholderData: keepPreviousData,
   });
 }
 

@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { PeriodMeetingNotes } from '@weekly-meeting/shared';
-import { describeSelection, exportFileName, filterNotes, matchingOptions, parseSelection, peopleOf, selectionParam } from './readerFilter';
+import {
+  describeSelection,
+  exportFileName,
+  filterNotes,
+  isStale,
+  matchingOptions,
+  meetingsParam,
+  notesRequest,
+  parseSelection,
+  peopleOf,
+  pickedMeetingsOf,
+  selectionParam,
+  showsLatest,
+} from './readerFilter';
 
 const doc = { type: 'doc' as const, content: [{ type: 'paragraph' }] };
 const note = (id: string) => ({ id, title: '', content: doc, projects: [], updatedAt: '2026-11-20T00:00:00Z' });
@@ -99,5 +112,47 @@ describe('matchingOptions', () => {
 
   it('finds nothing when a word is in no name', () => {
     expect(matchingOptions(options, 'andi zzz')).toEqual([]);
+  });
+});
+
+describe('the reader starts with the latest 3 meetings (owner, 2026-11-25)', () => {
+  const id = (n: number) => `00000000-0000-4000-8000-00000000000${n}`;
+  const quarter = [1, 2, 3, 4, 5].map((n) => meeting(id(n), `2026-10-0${n}`, [['u1', 'Ari Cole']]));
+  const latest = [id(3), id(4), id(5)];
+
+  it('asks the server for the latest 3, all, or the meetings listed', () => {
+    expect(notesRequest('')).toEqual({ latest: 3 });
+    expect(notesRequest('all')).toEqual({ meetings: 'all' });
+    expect(notesRequest(`${id(1)},${id(2)}`)).toEqual({ meetings: `${id(1)},${id(2)}` });
+    expect(notesRequest('none')).toEqual({ latest: 3 }); // nothing to read: the cheap request
+    expect(notesRequest('<script>')).toEqual({ latest: 3 }); // unreadable
+  });
+
+  it('picks the latest 3 at the start, every meeting for "all", or the ones listed', () => {
+    expect(pickedMeetingsOf('', quarter)).toEqual(latest);
+    expect(pickedMeetingsOf('all', quarter)).toBeNull();
+    expect(pickedMeetingsOf('none', quarter)).toEqual([]);
+    expect(pickedMeetingsOf(id(2), quarter)).toEqual([id(2)]);
+    expect(pickedMeetingsOf(id(9), quarter)).toEqual(latest); // none of this period's: the start
+    expect(pickedMeetingsOf('', quarter.slice(0, 3))).toBeNull(); // three or fewer: all of them
+  });
+
+  it('keeps the address short: nothing for the latest 3, "all" for every meeting', () => {
+    expect(meetingsParam(latest, quarter)).toBe('');
+    expect(meetingsParam(null, quarter)).toBe('all');
+    expect(meetingsParam([id(1)], quarter)).toBe(id(1));
+    expect(meetingsParam(null, quarter.slice(0, 3))).toBe('');
+  });
+
+  it('says when only the latest are shown, and when the address names none of these meetings', () => {
+    expect(showsLatest('', quarter)).toBe(true);
+    expect(showsLatest('all', quarter)).toBe(false);
+    expect(showsLatest(id(1), quarter)).toBe(false);
+    expect(showsLatest('', quarter.slice(0, 3))).toBe(false);
+    expect(isStale(id(9), quarter)).toBe(true);
+    expect(isStale('junk', quarter)).toBe(true);
+    expect(isStale(id(1), quarter)).toBe(false);
+    expect(isStale('', quarter)).toBe(false);
+    expect(isStale('all', quarter)).toBe(false);
   });
 });

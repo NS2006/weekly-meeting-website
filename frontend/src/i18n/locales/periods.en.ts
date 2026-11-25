@@ -76,7 +76,9 @@ export const periodsEn = {
   },
   // Home's card (CurrentPeriods).
   current: {
+    pages: "Pages of your teams' periods",
     title: 'This {{noun}}',
+    titleNext: 'This and next {{noun}}',
     open: 'Open {{label}}',
   },
   card: {
@@ -130,6 +132,7 @@ export const periodsEn = {
     peopleNoun: 'people',
     showAll: 'Show all',
     summary: '{{selection}}. Each meeting in its speaking order; Save as PDF or Word keeps what is shown.',
+    latestHint: 'The latest {{count}} meetings load first, to open quickly; “Show all” loads every one.',
     noNotesTitle: 'No notes for this choice',
     noNotesBody: 'Pick at least one meeting and one person who wrote on it, or show everything again.',
     navLabel: 'Meetings in {{label}}',

@@ -1,4 +1,4 @@
-import type { PeriodMeetingNotes } from '@weekly-meeting/shared';
+import type { PeriodMeetingIndex, PeriodMeetingNotes, PeriodNotesQuery } from '@weekly-meeting/shared';
 import { currentLanguage, type Language } from '../../i18n/language';
 import { fill, messages } from '../../i18n/messages';
 import { formatDay } from '../../utils/dates';
@@ -18,7 +18,7 @@ export interface PersonOption {
 }
 
 /** Everyone with notes in the period, by name. */
-export function peopleOf(meetings: readonly PeriodMeetingNotes[]): PersonOption[] {
+export function peopleOf(meetings: readonly PeriodMeetingIndex[]): PersonOption[] {
   const people = new Map<string, PersonOption>();
   for (const meeting of meetings) {
     for (const person of meeting.people) {
@@ -48,6 +48,51 @@ export function selectionParam(selected: Selection, available: readonly string[]
   return kept.length === available.length ? '' : kept.join(',');
 }
 
+/**
+ * The reader starts with the latest meetings only (owner, 2026-11-25: a quarter can hold hundreds of notes, and
+ * loading them all every time is slow once deployed); "All" loads every one when asked for.
+ */
+export const READER_LATEST = 3;
+const ID_LIST = /^[0-9a-f-]{36}(,[0-9a-f-]{36})*$/i;
+/** An address value that lists meetings (not "all", "none" or something unreadable). */
+const isList = (param: string) => ID_LIST.test(param);
+
+/** What to ask the server for, from the address's `meetings`: the latest 3 when it names none, all, or the ones listed. */
+export function notesRequest(param: string): PeriodNotesQuery {
+  if (param === 'all') return { meetings: 'all' };
+  if (isList(param)) return { meetings: param };
+  return { latest: READER_LATEST };
+}
+
+/**
+ * The meetings picked, from the address's `meetings`: the latest 3 (of those with notes) when it names none or none of
+ * this period's, null (all) for `all`, nothing for `none`, else the ones listed.
+ */
+export function pickedMeetingsOf(param: string, index: readonly PeriodMeetingIndex[]): Selection {
+  const ids = index.map((m) => m.id);
+  if (param === 'all') return null;
+  if (param === 'none') return [];
+  if (isList(param) && param.split(',').some((id) => ids.includes(id))) return parseSelection(param, ids);
+  return ids.length <= READER_LATEST ? null : ids.slice(-READER_LATEST);
+}
+
+/** The address's `meetings` for a pick: absent for the latest 3 (the start), `all` for every meeting. */
+export function meetingsParam(selected: Selection, index: readonly PeriodMeetingIndex[]): string {
+  const ids = index.map((m) => m.id);
+  const latest = ids.length <= READER_LATEST ? '' : ids.slice(-READER_LATEST).join(',');
+  const value = selectionParam(selected, ids);
+  if (value === '') return latest === '' ? '' : 'all';
+  return value === latest ? '' : value;
+}
+
+/** Whether the reader shows its start: the latest meetings only, while there are more. */
+export const showsLatest = (param: string, index: readonly PeriodMeetingIndex[]) =>
+  index.length > READER_LATEST && !(param === 'all' || param === 'none' || (isList(param) && param.split(',').some((id) => index.some((m) => m.id === id))));
+
+/** An address `meetings` that names none of this period's meetings (an old link, or unreadable): start over instead. */
+export const isStale = (param: string, index: readonly PeriodMeetingIndex[]) =>
+  param !== '' && param !== 'all' && param !== 'none' && !(isList(param) && param.split(',').some((id) => index.some((m) => m.id === id)));
+
 /** The chosen meetings, each with only the chosen people; meetings left with nobody are dropped. */
 export function filterNotes(meetings: readonly PeriodMeetingNotes[], meetingIds: Selection, userIds: Selection): PeriodMeetingNotes[] {
   const keepMeeting = meetingIds === null ? null : new Set(meetingIds);
@@ -63,7 +108,7 @@ export function filterNotes(meetings: readonly PeriodMeetingNotes[], meetingIds:
  * the interface language on screen; the downloads pass 'en'.
  */
 export function describeSelection(
-  meetings: readonly PeriodMeetingNotes[],
+  meetings: readonly PeriodMeetingIndex[],
   meetingIds: Selection,
   userIds: Selection,
   language: Language = currentLanguage(),
@@ -108,7 +153,7 @@ const shortDay = (date: string) => `${Number(date.slice(8, 10))} ${MONTHS[Number
 export function exportFileName(
   teamName: string,
   periodLabel: string,
-  meetings: readonly PeriodMeetingNotes[],
+  meetings: readonly PeriodMeetingIndex[],
   meetingIds: Selection,
   userIds: Selection,
   extension: string,

@@ -52,6 +52,39 @@ export function ownersOf(projects: readonly PeriodProject[]): BoardOwner[] {
   return [...owners.values()].sort((a, b) => byName(a.name, b.name) || a.id.localeCompare(b.id));
 }
 
+export interface BoardMeetingOption {
+  meeting: BoardMeeting;
+  /** The projects shared on it. */
+  count: number;
+}
+
+/** The period's meetings something was shared on, oldest first, with how many projects each has (the Meetings filter). */
+export function meetingOptions(projects: readonly PeriodProject[], meetings: readonly BoardMeeting[]): BoardMeetingOption[] {
+  const counts = new Map<string, number>();
+  for (const p of projects) for (const id of p.meetingIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+  return meetings
+    .filter((m) => counts.has(m.id))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
+    .map((meeting) => ({ meeting, count: counts.get(meeting.id) ?? 0 }));
+}
+
+/**
+ * The projects as seen through the meetings picked (owner, 2026-11-25): only those shared on one of them, each with
+ * just those meetings, its latest day among them, and as its count how many of them it was shared on. Null: every
+ * project as it is.
+ */
+export function onMeetings(projects: readonly PeriodProject[], picked: Selection, meetings: readonly BoardMeeting[]): PeriodProject[] {
+  if (picked === null) return [...projects];
+  const chosen = new Set(picked);
+  const dateOf = new Map(meetings.map((m) => [m.id, m.date]));
+  return projects.flatMap((p) => {
+    const meetingIds = p.meetingIds.filter((id) => chosen.has(id));
+    if (meetingIds.length === 0) return [];
+    const lastSharedOn = meetingIds.map((id) => dateOf.get(id) ?? '').reduce((a, b) => (b > a ? b : a), '');
+    return [{ ...p, meetingIds, lastSharedOn: lastSharedOn || p.lastSharedOn, updateCount: meetingIds.length }];
+  });
+}
+
 /** The projects whose name has every word typed (any case, any order), of the people picked (null: everyone). */
 export function filterProjects(projects: readonly PeriodProject[], search: string, owners: Selection): PeriodProject[] {
   const words = searchWords(search);

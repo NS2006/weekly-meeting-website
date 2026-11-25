@@ -15,6 +15,8 @@ import {
   boardColumns,
   BOARD_SORTS,
   filterProjects,
+  meetingOptions,
+  onMeetings,
   groupParam,
   highlightParts,
   ownersOf,
@@ -29,13 +31,14 @@ import { usePeriodProjects } from './useTeamProjects';
 import './teamProjects.css';
 
 /** The board's settings in the address, so reload, Back and a shared link keep them. */
-const PARAM = { group: 'group', search: 'search', owners: 'owners', sort: 'sort' } as const;
+const PARAM = { group: 'group', search: 'search', owners: 'owners', meetings: 'meetings', sort: 'sort' } as const;
 
 /**
  * A period's Projects tab (owner, 2026-11-24: on the quarter page, like a Trello board): the team members' projects
  * through what was shared on the team's meetings in the period, one column per person (or per meeting), each column a
  * list of cards that scrolls on its own; the columns wrap into rows (owner, 2026-11-24: no sideways scrolling). Search,
- * people and order apply at once; a card opens the project on its own
+ * people, meetings (owner, 2026-11-25: only what was shared on the meetings picked) and order apply at once; a card
+ * opens the project on its own
  * page (with previous and next through its column). Read-only: every project belongs to its writer, so cards are not
  * dragged between columns.
  */
@@ -75,6 +78,9 @@ function Board({ period, projects, truncated }: { period: PeriodDetail; projects
   const owners = ownersOf(projects);
   const ownerIds = owners.map((o) => o.id);
   const picked = parseSelection(params.get(PARAM.owners) ?? '', ownerIds);
+  const meetingChoices = meetingOptions(projects, period.meetings);
+  const meetingIds = meetingChoices.map((o) => o.meeting.id);
+  const pickedMeetings = parseSelection(params.get(PARAM.meetings) ?? '', meetingIds);
 
   /**
    * Changes the board's settings in place (no new history entry). Built on the address as it is now, not as it was
@@ -107,12 +113,12 @@ function Board({ period, projects, truncated }: { period: PeriodDetail; projects
     return () => clearTimeout(timer);
   }, [search]);
 
-  const shown = filterProjects(projects, search, picked);
+  const shown = filterProjects(onMeetings(projects, pickedMeetings, period.meetings), search, picked);
   const columns = boardColumns(shown, period.meetings, group, sort);
-  const filtered = search.trim() !== '' || picked !== null;
+  const filtered = search.trim() !== '' || picked !== null || pickedMeetings !== null;
   const clearFilters = () => {
     setSearch('');
-    update({ search: '', owners: '' });
+    update({ search: '', owners: '', meetings: '' });
   };
   // What a card's page needs to come back here and step through its column.
   const from = `${location.pathname}${location.search}`;
@@ -208,6 +214,17 @@ function Board({ period, projects, truncated }: { period: PeriodDetail; projects
           selected={picked}
           onChange={(next) => update({ owners: selectionParam(next, ownerIds) })}
         />
+        <ChecklistFilter
+          label={t('teams.projects.meetingsLabel')}
+          noun={t('teams.projects.meetingsNoun')}
+          options={meetingChoices.map((o) => ({
+            value: o.meeting.id,
+            label: formatDay(o.meeting.date),
+            detail: t('teams.projects.projectCount', { count: o.count }),
+          }))}
+          selected={pickedMeetings}
+          onChange={(next) => update({ meetings: selectionParam(next, meetingIds) })}
+        />
         <BlueSelect<BoardSort>
           size="sm"
           ariaLabel={t('teams.projects.sortBy')}
@@ -251,7 +268,17 @@ function Board({ period, projects, truncated }: { period: PeriodDetail; projects
       ) : (
         <div ref={boardRef} className="board" role="region" aria-label={t('teams.projects.board', { label: period.label })} onKeyDown={moveFocus}>
           {columns.map((c, index) => (
-            <BoardColumnView key={c.key} column={c} index={index} group={group} search={search} period={period} hintId={hintId} from={from} />
+            <BoardColumnView
+              key={c.key}
+              column={c}
+              index={index}
+              group={group}
+              search={search}
+              period={period}
+              hintId={hintId}
+              from={from}
+              onPicked={pickedMeetings !== null}
+            />
           ))}
         </div>
       )}
@@ -273,6 +300,7 @@ function BoardColumnView({
   period,
   hintId,
   from,
+  onPicked,
 }: {
   column: BoardColumn;
   index: number;
@@ -281,6 +309,8 @@ function BoardColumnView({
   period: PeriodDetail;
   hintId: string;
   from: string;
+  /** Meetings are picked: a card counts the picked meetings it was shared on. */
+  onPicked: boolean;
 }) {
   const { t } = useTranslation();
   const headingId = useId();
@@ -314,7 +344,7 @@ function BoardColumnView({
       <ul className="board-column__cards">
         {column.cards.map((card, row) => (
           <li key={card.id}>
-            <BoardCard card={card} col={index} row={row} group={group} search={search} period={period} hintId={hintId} trail={trail} />
+            <BoardCard card={card} col={index} row={row} group={group} search={search} period={period} hintId={hintId} trail={trail} onPicked={onPicked} />
           </li>
         ))}
       </ul>
@@ -332,6 +362,7 @@ function BoardCard({
   period,
   hintId,
   trail,
+  onPicked,
 }: {
   card: PeriodProject;
   col: number;
@@ -341,12 +372,18 @@ function BoardCard({
   period: PeriodDetail;
   hintId: string;
   trail: BoardTrail;
+  onPicked: boolean;
 }) {
   const { t } = useTranslation();
   const archived = card.status === 'archived';
   const facts = [
     group === 'meeting' ? card.owner.name : null,
-    t('teams.projects.updateCount', { count: card.updateCount }),
+    // With meetings picked, the count is of those meetings (onMeetings).
+    onPicked && group === 'person'
+      ? t('teams.projects.onPicked', { count: card.updateCount })
+      : onPicked
+        ? null
+        : t('teams.projects.updateCount', { count: card.updateCount }),
     group === 'person' ? t('teams.projects.latest', { date: formatDay(card.lastSharedOn) }) : null,
     archived ? t('teams.projects.archived') : null,
   ].filter(Boolean);

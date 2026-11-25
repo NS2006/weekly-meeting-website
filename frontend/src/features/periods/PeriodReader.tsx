@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { PeriodDetail, PeriodMeetingNotes } from '@weekly-meeting/shared';
+import type { PeriodDetail, PeriodMeetingIndex, PeriodMeetingNotes } from '@weekly-meeting/shared';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { BlueAlert, BlueAvatar, BlueBadge, BlueButton, BlueCard, BlueEmptyState, BlueSelect, BlueSkeleton } from '../../components/blue';
@@ -15,7 +15,21 @@ import { DateTile } from '../meetings/MeetingParts';
 import { NoteContentView } from '../notes/NoteContentView';
 import { scrollBehavior, useActiveSection } from '../notes/ProjectNav';
 import { ChecklistFilter } from './ChecklistFilter';
-import { describeSelection, exportFileName, filterNotes, parseSelection, peopleOf, selectionParam, type Selection } from './readerFilter';
+import {
+  describeSelection,
+  exportFileName,
+  filterNotes,
+  isStale,
+  meetingsParam,
+  notesRequest,
+  parseSelection,
+  peopleOf,
+  pickedMeetingsOf,
+  READER_LATEST,
+  selectionParam,
+  showsLatest,
+  type Selection,
+} from './readerFilter';
 import { dayRange, periodNoun } from './split';
 import { usePeriodNotes } from './usePeriods';
 import '../notes/notes.css';
@@ -61,15 +75,17 @@ function jumpTo(element: HTMLElement) {
 
 /**
  * "Read notes" (owner, 2026-11-23, filters 2026-11-24): the notes shared on the period's meetings, in full, meeting by
- * meeting and in each meeting's speaking order, like the quarter's Word file. All of them, or the meetings and people
- * picked (kept in the address). Beside them, a column that stays in view: what to read, the downloads, and the
+ * meeting and in each meeting's speaking order, like the quarter's Word file. The latest 3 meetings at the start
+ * (owner, 2026-11-25: only those are loaded, so a full quarter opens quickly), all of them once asked for, or the
+ * meetings and people picked (kept in the address). Beside them, a column that stays in view: what to read, the downloads, and the
  * meetings to jump to (and, under the one being read, its people); on a phone a "Go to" list that stays at the top.
  * "Back to top" shows once the page is scrolled down. What is shown is downloaded as a PDF or a Word file (owner, 2026-11-24:
  * the PDF too is made here, not through the print window, which still prints the page as it is).
  */
 export function PeriodReader({ period }: { period: PeriodDetail }) {
   const { t } = useTranslation();
-  const notes = usePeriodNotes(period.teamId, period.key, true);
+  const [params] = useSearchParams();
+  const notes = usePeriodNotes(period.teamId, period.key, notesRequest(params.get('meetings') ?? ''), true);
   const code = notes.error instanceof ApiFailure ? notes.error.code : notes.error ? 'unknown_error' : null;
 
   // A failed refresh (a dropped connection) keeps what is being read; only a first load that fails says so.
@@ -85,7 +101,7 @@ export function PeriodReader({ period }: { period: PeriodDetail }) {
       </div>
     );
   }
-  if (notes.data.meetings.length === 0) {
+  if (notes.data.index.length === 0) {
     return (
       <BlueCard>
         <BlueEmptyState icon={<NotesIcon size={26} />} title={t('periods.reader.emptyTitle')}>
@@ -94,10 +110,23 @@ export function PeriodReader({ period }: { period: PeriodDetail }) {
       </BlueCard>
     );
   }
-  return <ReadingView period={period} meetings={notes.data.meetings} />;
+  return <ReadingView period={period} index={notes.data.index} loaded={notes.data.meetings} refreshing={notes.isPlaceholderData} />;
 }
 
-function ReadingView({ period, meetings }: { period: PeriodDetail; meetings: PeriodMeetingNotes[] }) {
+function ReadingView({
+  period,
+  index,
+  loaded,
+  refreshing,
+}: {
+  period: PeriodDetail;
+  /** Every meeting of the period with notes (who wrote, no text): for the pickers and the counts. */
+  index: PeriodMeetingIndex[];
+  /** The meetings loaded in full. */
+  loaded: PeriodMeetingNotes[];
+  /** Another pick is loading: the notes on screen are the previous ones. */
+  refreshing: boolean;
+}) {
   const { t } = useTranslation();
   const people = (count: number) => t('periods.reader.personCount', { count });
   const today = todayWib();
@@ -122,36 +151,45 @@ function ReadingView({ period, meetings }: { period: PeriodDetail; meetings: Per
       if (document.activeElement === document.body || document.activeElement === null) document.getElementById(id)?.focus();
     });
 
-  // Which meetings and whose notes: in the address (?meetings=…&people=…), everything when absent.
-  const meetingIds = useMemo(() => meetings.map((m) => m.id), [meetings]);
-  const everyone = useMemo(() => peopleOf(meetings), [meetings]);
+  // Which meetings and whose notes: in the address (?meetings=…&people=…). No `meetings`: the latest 3 (owner,
+  // 2026-11-25); `all`: every meeting; no `people`: everyone.
+  const everyone = useMemo(() => peopleOf(index), [index]);
   const userIds = useMemo(() => everyone.map((p) => p.userId), [everyone]);
-  const meetingsParam = params.get('meetings') ?? '';
+  const meetingsValue = params.get('meetings') ?? '';
   const peopleParam = params.get('people') ?? '';
-  const pickedMeetings = useMemo(() => parseSelection(meetingsParam, meetingIds), [meetingsParam, meetingIds]);
+  const pickedMeetings = useMemo(() => pickedMeetingsOf(meetingsValue, index), [meetingsValue, index]);
   const pickedPeople = useMemo(() => parseSelection(peopleParam, userIds), [peopleParam, userIds]);
-  const shown = useMemo(() => filterNotes(meetings, pickedMeetings, pickedPeople), [meetings, pickedMeetings, pickedPeople]);
+  const shown = useMemo(() => filterNotes(loaded, pickedMeetings, pickedPeople), [loaded, pickedMeetings, pickedPeople]);
   const filtered = pickedMeetings !== null || pickedPeople !== null;
-  const selection = describeSelection(meetings, pickedMeetings, pickedPeople);
+  const latestOnly = showsLatest(meetingsValue, index);
+  const selection = describeSelection(index, pickedMeetings, pickedPeople);
   // Downloads are always in English (owner, 2026-11-24).
-  const selectionInEnglish = describeSelection(meetings, pickedMeetings, pickedPeople, 'en');
+  const selectionInEnglish = describeSelection(index, pickedMeetings, pickedPeople, 'en');
 
-  const pick = (name: 'meetings' | 'people', next: Selection, available: readonly string[]) =>
+  const setParam = (name: 'meetings' | 'people', value: string) =>
     setParams(
       (current) => {
         const updated = new URLSearchParams(current);
-        const value = selectionParam(next, available);
         if (value) updated.set(name, value);
         else updated.delete(name);
         return updated;
       },
       { replace: true },
     );
+  const pickMeetings = (next: Selection) => setParam('meetings', meetingsParam(next, index));
+  // An address naming none of this period's meetings (an old link) starts over at the latest ones.
+  useEffect(() => {
+    if (isStale(meetingsValue, index)) setParam('meetings', '');
+  }, [meetingsValue, index]);
+  const pickPeople = (next: Selection) => setParam('people', selectionParam(next, userIds));
+  // Every meeting (loaded now) and everyone.
   const showAll = () =>
     setParams(
       (current) => {
         const updated = new URLSearchParams(current);
-        updated.delete('meetings');
+        const all = meetingsParam(null, index);
+        if (all) updated.set('meetings', all);
+        else updated.delete('meetings');
         updated.delete('people');
         return updated;
       },
@@ -203,7 +241,7 @@ function ReadingView({ period, meetings }: { period: PeriodDetail; meetings: Per
         exportedOn: today,
         meetings: shown,
       };
-      const fileName = exportFileName(period.teamName, period.label, meetings, pickedMeetings, pickedPeople, kind === 'pdf' ? 'pdf' : 'docx');
+      const fileName = exportFileName(period.teamName, period.label, index, pickedMeetings, pickedPeople, kind === 'pdf' ? 'pdf' : 'docx');
       const progress = (done: number, total: number) => setSaving({ kind, done, total });
       const { missing } =
         kind === 'pdf'
@@ -234,16 +272,16 @@ function ReadingView({ period, meetings }: { period: PeriodDetail; meetings: Per
       <ChecklistFilter
         label={t('periods.reader.meetingsLabel')}
         noun={t('periods.reader.meetingsNoun')}
-        options={meetings.map((m) => ({ value: m.id, label: formatDay(m.date), detail: people(m.people.length) }))}
+        options={index.map((m) => ({ value: m.id, label: formatDay(m.date), detail: people(m.people.length) }))}
         selected={pickedMeetings}
-        onChange={(next) => pick('meetings', next, meetingIds)}
+        onChange={pickMeetings}
       />
       <ChecklistFilter
         label={t('periods.reader.peopleLabel')}
         noun={t('periods.reader.peopleNoun')}
         options={everyone.map((p) => ({ value: p.userId, label: p.name, detail: t('periods.reader.meetingCount', { count: p.meetings }) }))}
         selected={pickedPeople}
-        onChange={(next) => pick('people', next, userIds)}
+        onChange={pickPeople}
       />
       {filtered ? (
         <button type="button" className="link-button small" onClick={showAll}>
@@ -259,7 +297,7 @@ function ReadingView({ period, meetings }: { period: PeriodDetail; meetings: Per
         variant="secondary"
         size="sm"
         loading={saving?.kind === 'pdf'}
-        disabled={shown.length === 0 || saving !== null}
+        disabled={shown.length === 0 || saving !== null || refreshing}
         title={t('periods.reader.save.pdf.title')}
         onClick={() => void save('pdf')}
       >
@@ -270,7 +308,7 @@ function ReadingView({ period, meetings }: { period: PeriodDetail; meetings: Per
         variant="secondary"
         size="sm"
         loading={saving?.kind === 'word'}
-        disabled={shown.length === 0 || saving !== null}
+        disabled={shown.length === 0 || saving !== null || refreshing}
         title={t('periods.reader.save.word.title')}
         onClick={() => void save('word')}
       >
@@ -301,7 +339,13 @@ function ReadingView({ period, meetings }: { period: PeriodDetail; meetings: Per
           {saveButtons}
         </div>
       ) : null}
-      <p className="muted small period-reader__summary">{narrow && progress ? progress : t('periods.reader.summary', { selection })}</p>
+      <p className="muted small period-reader__summary" role="status">
+        {narrow && progress
+          ? progress
+          : refreshing
+            ? t('periods.reader.loading')
+            : `${t('periods.reader.summary', { selection })}${latestOnly ? ` ${t('periods.reader.latestHint', { count: READER_LATEST })}` : ''}`}
+      </p>
       <p className="visually-hidden" aria-live="polite">
         {announce}
       </p>
@@ -326,7 +370,7 @@ function ReadingView({ period, meetings }: { period: PeriodDetail; meetings: Per
             ) : null}
           </aside>
         )}
-        <div className="period-reader__content">
+        <div className={`period-reader__content${refreshing ? ' is-refreshing' : ''}`}>
           {shown.length === 0 ? (
             <BlueCard>
               <BlueEmptyState

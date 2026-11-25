@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import type { PeriodProject } from '@weekly-meeting/shared';
-import { boardColumns, filterProjects, highlightParts, ownersOf, parseGroup, parseSort, sortCards, timelineOf, type BoardMeeting } from './boardModel';
+import {
+  boardColumns,
+  filterProjects,
+  highlightParts,
+  meetingOptions,
+  onMeetings,
+  ownersOf,
+  parseGroup,
+  parseSort,
+  sortCards,
+  timelineOf,
+  type BoardMeeting,
+} from './boardModel';
 
 const meeting = (id: string, date: string, status: BoardMeeting['status'] = 'done'): BoardMeeting => ({
   id,
@@ -112,5 +124,30 @@ describe('address values', () => {
   it('reads the group and sort, falling back to the defaults', () => {
     expect([parseGroup('meeting'), parseGroup('person'), parseGroup('x'), parseGroup(null)]).toEqual(['meeting', 'person', 'person', 'person']);
     expect([parseSort('name'), parseSort('updates'), parseSort('size'), parseSort(null)]).toEqual(['name', 'updates', 'latest', 'latest']);
+  });
+});
+
+describe('picking meetings on the board (owner, 2026-11-25)', () => {
+  it('offers the meetings something was shared on, oldest first, with how many projects each has', () => {
+    expect(meetingOptions(projects, meetings).map((o) => [o.meeting.id, o.count])).toEqual([
+      ['m1', 3],
+      ['m2', 3],
+    ]);
+  });
+
+  it('keeps the projects shared on a picked meeting, counted and dated within those meetings', () => {
+    const seen = onMeetings(projects, ['m1'], meetings);
+    expect(seen.map((p) => [p.id, p.meetingIds, p.updateCount, p.lastSharedOn])).toEqual([
+      ['p1', ['m1'], 1, '2026-10-01'],
+      ['p2', ['m1'], 1, '2026-10-01'],
+      ['p3', ['m1'], 1, '2026-10-01'],
+    ]);
+    expect(onMeetings(projects, null, meetings)).toEqual(projects);
+    expect(onMeetings(projects, [], meetings)).toEqual([]);
+  });
+
+  it('shows only the picked meetings as columns when grouped by meeting', () => {
+    const columns = boardColumns(onMeetings(projects, ['m2'], meetings), meetings, 'meeting', 'latest');
+    expect(columns.map((c) => c.key)).toEqual(['meeting:m2']);
   });
 });

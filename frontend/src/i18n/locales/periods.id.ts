@@ -72,7 +72,9 @@ export const periodsId: Messages['periods'] = {
   },
   // The noun comes first in Indonesian; the code capitalizes the result.
   current: {
+    pages: 'Halaman periode tim Anda',
     title: '{{noun}} ini',
+    titleNext: '{{noun}} ini dan berikutnya',
     open: 'Buka {{label}}',
   },
   card: {
@@ -126,6 +128,7 @@ export const periodsId: Messages['periods'] = {
     peopleNoun: 'orang',
     showAll: 'Tampilkan semua',
     summary: '{{selection}}. Setiap rapat sesuai urutan bicaranya; Simpan sebagai PDF atau Word menyimpan apa yang ditampilkan.',
+    latestHint: '{{count}} rapat terakhir dimuat lebih dulu agar cepat terbuka; “Tampilkan semua” memuat semuanya.',
     noNotesTitle: 'Tidak ada catatan untuk pilihan ini',
     noNotesBody: 'Pilih setidaknya satu rapat dan satu orang yang menulis di rapat itu, atau tampilkan semuanya lagi.',
     navLabel: 'Rapat di {{label}}',
