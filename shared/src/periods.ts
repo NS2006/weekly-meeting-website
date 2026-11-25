@@ -84,14 +84,31 @@ export interface PeriodPersonNotes {
   notes: PeriodNote[];
 }
 
-export interface PeriodMeetingNotes {
+/**
+ * A meeting of the period that has notes, without them (owner, 2026-11-25: the reader's pickers need every meeting and
+ * person, but only the meetings picked are loaded in full).
+ */
+export interface PeriodMeetingIndex {
   id: string;
   date: string;
   title: string | null;
   seriesName: string;
   status: MeetingStatus;
   /** In the meeting's board order (its speaking order); only people with notes. */
+  people: { userId: string; name: string }[];
+}
+
+export interface PeriodMeetingNotes extends PeriodMeetingIndex {
   people: PeriodPersonNotes[];
+}
+
+/**
+ * GET /api/teams/:id/periods/:key/notes query: which meetings to send in full. `meetings`: `all`, or ids separated by
+ * commas; `latest`: the last N meetings with notes (the reader's default is 3). Neither: all of them.
+ */
+export interface PeriodNotesQuery {
+  meetings?: string;
+  latest?: number;
 }
 
 /**
@@ -99,10 +116,17 @@ export interface PeriodMeetingNotes {
  * every meeting that has notes, by day, and on each its people and their notes in full.
  */
 export interface PeriodNotesResponse {
+  /** Every meeting of the period that has notes, by day, with who wrote (no note text). */
+  index: PeriodMeetingIndex[];
+  /** The meetings asked for, by day, with their notes in full. */
   meetings: PeriodMeetingNotes[];
 }
 
-/** GET /api/periods/current: the current period of each of my teams (not deleted), for Home. */
+/**
+ * GET /api/periods/current, for Home: the current period of each of my teams (not deleted), and the ones that start
+ * within the next four weeks, as far as meetings are made (owner, 2026-11-25: a team split into months shows next
+ * month too, near the end of this one). Team by team, in each team's order; a team can appear more than once.
+ */
 export interface CurrentPeriodsResponse {
   teams: { teamId: string; teamName: string; split: YearSplit; period: PeriodSummary }[];
 }

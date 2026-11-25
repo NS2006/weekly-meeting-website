@@ -11,6 +11,7 @@ import type {
   MyMeetingsQuery,
   MeetingSeriesView,
   MeetingsResponse,
+  UpcomingMeetingsResponse,
   MeetingView,
   PeriodDetail,
   PeriodNotesResponse,
@@ -50,13 +51,13 @@ import {
 } from './periods.ts';
 import {
   HOME_DAYS,
-  HOME_LIMIT,
   HORIZON_DAYS,
   MAX_SERIES_PER_TEAM,
   MOVE_MAX_DAYS,
   MY_UPCOMING_LIMIT,
   PAST_PAGE_SIZE,
   SCHEDULE_WINDOW,
+  type PeriodNotesPick,
 } from './types.ts';
 
 export interface MeetingsService {
@@ -64,8 +65,9 @@ export interface MeetingsService {
   createSeries(actor: AuthContext, teamId: string, input: CreateSeriesRequest): Promise<MeetingSeriesView>;
   updateSeries(actor: AuthContext, seriesId: string, input: UpdateSeriesRequest): Promise<MeetingSeriesView>;
   deleteSeries(actor: AuthContext, seriesId: string): Promise<void>;
-  listForTeam(actor: AuthContext, teamId: string, page: { when: 'upcoming' | 'past'; offset: number }): Promise<MeetingsResponse>;
-  upcomingForMe(actor: AuthContext): Promise<MeetingsResponse>;
+  listForTeam(actor: AuthContext, teamId: string, page: { when: 'upcoming' | 'past'; offset: number; limit?: number }): Promise<MeetingsResponse>;
+  /** Home: a page of my teams' meetings of the next four weeks, soonest first, with how many there are. */
+  upcomingForMe(actor: AuthContext, page: { offset: number; limit: number }): Promise<UpcomingMeetingsResponse>;
   /** The Meetings page: my teams' meetings, upcoming or past, with its filters. */
   listForMe(actor: AuthContext, query: MyMeetingsQuery): Promise<MeetingsResponse>;
   get(actor: AuthContext, meetingId: string): Promise<MeetingDetail>;
@@ -76,7 +78,7 @@ export interface MeetingsService {
   /** One period of the team and its meetings; 404 when the key does not fit the team's split. */
   period(actor: AuthContext, teamId: string, key: string): Promise<PeriodDetail>;
   /** The whole period to read: its meetings with notes, people in board order, notes in full. */
-  periodNotes(actor: AuthContext, teamId: string, key: string): Promise<PeriodNotesResponse>;
+  periodNotes(actor: AuthContext, teamId: string, key: string, pick?: PeriodNotesPick): Promise<PeriodNotesResponse>;
   /** The current period of each of my teams (Home). */
   currentPeriods(actor: AuthContext): Promise<CurrentPeriodsResponse>;
   update(actor: AuthContext, meetingId: string, input: UpdateMeetingRequest): Promise<MeetingDetail>;
@@ -357,21 +359,20 @@ export function createMeetingsService(deps: { db: Database; logger: Logger; now?
 
     async listForTeam(actor, teamId, page) {
       await roleIn(teamId, actor.user.id);
-      // Upcoming is at most HORIZON_DAYS of meetings; past comes in pages ("Show more").
-      const limit = page.when === 'upcoming' ? MAX_SERIES_PER_TEAM * HORIZON_DAYS : PAST_PAGE_SIZE;
-      const rows = await meetings.listForTeam(teamId, today(), { ...page, limit: limit + 1 });
+      // Upcoming is at most HORIZON_DAYS of meetings; past comes in pages ("Show more"); `limit` asks for fewer.
+      const limit = page.limit ?? (page.when === 'upcoming' ? MAX_SERIES_PER_TEAM * HORIZON_DAYS : PAST_PAGE_SIZE);
+      const rows = await meetings.listForTeam(teamId, today(), { when: page.when, offset: page.offset, limit: limit + 1 });
       return { meetings: rows.slice(0, limit).map(toMeeting), hasMore: rows.length > limit };
     },
 
-    async upcomingForMe(actor) {
+    async upcomingForMe(actor, page) {
       const day = today();
-      const rows = await meetings.listForUser(actor.user.id, day, {
-        when: 'upcoming',
-        to: addDays(day, HOME_DAYS - 1),
-        offset: 0,
-        limit: HOME_LIMIT + 1,
-      });
-      return { meetings: rows.slice(0, HOME_LIMIT).map(toMeeting), hasMore: rows.length > HOME_LIMIT };
+      const range = { when: 'upcoming' as const, to: addDays(day, HOME_DAYS - 1) };
+      const [rows, total] = await Promise.all([
+        meetings.listForUser(actor.user.id, day, { ...range, offset: page.offset, limit: page.limit + 1 }),
+        meetings.countForUser(actor.user.id, day, range),
+      ]);
+      return { meetings: rows.slice(0, page.limit).map(toMeeting), hasMore: rows.length > page.limit, total };
     },
 
     async listForMe(actor, query) {
@@ -415,7 +416,7 @@ export function createMeetingsService(deps: { db: Database; logger: Logger; now?
       };
     },
 
-    async periodNotes(actor, teamId, key) {
+    async periodNotes(actor, teamId, key, pick = {}) {
       const { team, period, day } = await findPeriod(teamId, actor.user.id, key);
       const rows = (await meetings.listForTeamBetween(teamId, day, period.start, period.end)).filter((m) => m.noteCount > 0);
       // Each meeting in its board order (speaking order, then the leader, then by name); blank notes left out.
@@ -427,12 +428,28 @@ export function createMeetingsService(deps: { db: Database; logger: Logger; now?
             .filter((c) => c.notes.length > 0),
         })),
       );
+      const withNotes = boards.filter((b) => b.people.length > 0);
+      // Only the meetings asked for come with their notes in full (owner, 2026-11-25): the note text is what is heavy.
+      const wanted = Array.isArray(pick.meetings) ? new Set(pick.meetings) : null;
+      const chosen =
+        wanted !== null
+          ? withNotes.filter((b) => wanted.has(b.meeting.id))
+          : pick.meetings === undefined && pick.latest !== undefined
+            ? withNotes.slice(-pick.latest)
+            : withNotes;
       const contents = new Map(
-        (await meetings.notesContent([...new Set(boards.flatMap((b) => b.people.flatMap((p) => p.notes.map((n) => n.id))))])).map((row) => [row.id, row]),
+        (await meetings.notesContent([...new Set(chosen.flatMap((b) => b.people.flatMap((p) => p.notes.map((n) => n.id))))])).map((row) => [row.id, row]),
       );
       return {
-        meetings: boards
-          .filter((b) => b.people.length > 0)
+        index: withNotes.map(({ meeting, people }) => ({
+          id: meeting.id,
+          date: meeting.date,
+          title: meeting.title,
+          seriesName: meeting.seriesName,
+          status: meeting.status,
+          people: people.map((person) => ({ userId: person.userId, name: person.name })),
+        })),
+        meetings: chosen
           .map(({ meeting, people }) => ({
             id: meeting.id,
             date: meeting.date,
@@ -454,16 +471,21 @@ export function createMeetingsService(deps: { db: Database; logger: Logger; now?
 
     async currentPeriods(actor) {
       const day = today();
+      // The next four weeks: as far ahead as meetings are made.
+      const horizonEnd = addDays(day, HORIZON_DAYS - 1);
       const mine = (await teams.listForUser(actor.user.id)).filter((t) => t.archivedAt === null);
-      return {
-        teams: await Promise.all(
-          mine.map(async (team) => {
-            const split = splitOf(team);
-            const days = await meetings.teamMeetingDays(team.id, day);
-            return { teamId: team.id, teamName: team.name, split, period: summarize(periodOf(day, split), days, day) };
-          }),
-        ),
-      };
+      const perTeam = await Promise.all(
+        mine.map(async (team) => {
+          const split = splitOf(team);
+          const days = await meetings.teamMeetingDays(team.id, day);
+          // The current period, then each one that starts before the four weeks are over.
+          const current = periodOf(day, split);
+          const periods = [current];
+          for (let next = nextPeriod(current, split); next.start <= horizonEnd; next = nextPeriod(next, split)) periods.push(next);
+          return periods.map((period) => ({ teamId: team.id, teamName: team.name, split, period: summarize(period, days, day) }));
+        }),
+      );
+      return { teams: perTeam.flat() };
     },
 
     async schedule(actor, meetingId) {

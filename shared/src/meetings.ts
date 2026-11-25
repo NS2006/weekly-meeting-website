@@ -114,13 +114,29 @@ export interface UpdateSeriesRequest {
 }
 
 /**
- * GET /api/teams/:id/meetings?when=upcoming|past&offset=N, GET /api/meetings?when=upcoming|past&teamId=&offset=N
- * (my teams) and GET /api/meetings/upcoming (Home: my next two weeks).
+ * GET /api/teams/:id/meetings?when=upcoming|past&offset=N and GET /api/meetings?when=upcoming|past&teamId=&offset=N
+ * (my teams).
  */
 export interface MeetingsResponse {
   meetings: MeetingView[];
   /** More past meetings exist: ask again with `offset` = the number already shown. */
   hasMore: boolean;
+}
+
+/**
+ * GET /api/meetings/upcoming?offset=&limit= (Home, owner 2026-11-25): my teams' meetings of the next four weeks,
+ * soonest first and, on one day, the teams I starred first; a page at a time. Home asks for the first 5, and 10 a
+ * page once "Show all" is open.
+ */
+export interface UpcomingMeetingsQuery {
+  offset?: number;
+  /** 1–20 (5 when not given). */
+  limit?: number;
+}
+
+export interface UpcomingMeetingsResponse extends MeetingsResponse {
+  /** How many meetings the next four weeks hold, on every page. */
+  total: number;
 }
 
 /** GET /api/meetings filters (the Meetings page); all optional. */

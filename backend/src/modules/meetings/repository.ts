@@ -140,7 +140,10 @@ export interface MeetingsRepository {
    * team (another team's id simply matches nothing), status as shown (`done` once the day passed), text in the
    * title, schedule or team name, and a date range (`from` and `to` included).
    */
+  /** My teams' meetings by day; on one day, the teams I starred first (owner, 2026-11-25), then by team and schedule. */
   listForUser(userId: string, today: string, page: MyMeetingsPage): Promise<MeetingRow[]>;
+  /** How many meetings `listForUser` finds with these filters, on every page. */
+  countForUser(userId: string, today: string, page: Omit<MyMeetingsPage, 'offset' | 'limit'>): Promise<number>;
   /** One meeting, with the meetings just before and after it in its schedule (by the day they happen). */
   find(meetingId: string, today: string): Promise<MeetingDetailRow | null>;
   /** The meetings of the meeting's series by day: up to `window` before it, itself, and up to `window` after it. */
@@ -222,6 +225,31 @@ const SERIES_SELECT = `
          (SELECT min(m.meeting_date) FROM meetings m
            WHERE m.series_id = s.id AND m.meeting_date >= $2::date AND m.status <> 'cancelled') AS "nextMeetingDate"
     FROM meeting_series s`;
+
+/**
+ * A user's meetings ($1 the user, $2 today, then $3–$7: from, to, team, status, words). Starts from the user's
+ * memberships, then their teams' series and the (series_id, meeting_date) index, so every filter here works on that
+ * person's meetings only. Comes after MEETING_FROM (it needs `m`, `s` and `t`).
+ */
+const USER_MEETINGS = (upcoming: boolean) => `
+           JOIN team_members me ON me.team_id = t.id AND me.user_id = $1
+          WHERE t.archived_at IS NULL
+            AND ${upcoming ? 'm.meeting_date >= $2::date' : 'm.meeting_date < $2::date'}
+            AND ($3::date IS NULL OR m.meeting_date >= $3::date)
+            AND ($4::date IS NULL OR m.meeting_date <= $4::date)
+            AND ($5::uuid IS NULL OR t.id = $5::uuid)
+            AND ($6::text IS NULL OR ${STATUS('$2')} = $6::text)
+            AND ($7::text IS NULL OR m.title ILIKE $7 OR s.name ILIKE $7 OR t.name ILIKE $7)`;
+
+const userMeetingValues = (userId: string, today: string, page: Omit<MyMeetingsPage, 'offset' | 'limit'>) => [
+  userId,
+  today,
+  page.from ?? null,
+  page.to ?? null,
+  page.teamId ?? null,
+  page.status ?? null,
+  page.q ? likePattern(page.q) : null,
+];
 
 export function createMeetingsRepository(db: Db): MeetingsRepository {
   return {
@@ -337,33 +365,22 @@ export function createMeetingsRepository(db: Db): MeetingsRepository {
 
     async listForUser(userId, today, page) {
       const upcoming = page.when === 'upcoming';
-      // Starts from the user's memberships, then their teams' series and the (series_id, meeting_date) index, so
-      // every filter here works on that person's meetings only.
       const { rows } = await db.query<MeetingRow>(
         `${MEETING_SELECT('$2')}
-           JOIN team_members me ON me.team_id = t.id AND me.user_id = $1
-          WHERE t.archived_at IS NULL
-            AND ${upcoming ? 'm.meeting_date >= $2::date' : 'm.meeting_date < $2::date'}
-            AND ($3::date IS NULL OR m.meeting_date >= $3::date)
-            AND ($4::date IS NULL OR m.meeting_date <= $4::date)
-            AND ($5::uuid IS NULL OR t.id = $5::uuid)
-            AND ($6::text IS NULL OR ${STATUS('$2')} = $6::text)
-            AND ($7::text IS NULL OR m.title ILIKE $7 OR s.name ILIKE $7 OR t.name ILIKE $7)
-          ORDER BY m.meeting_date ${upcoming ? 'ASC' : 'DESC'}, lower(t.name), lower(s.name), m.id
+           ${USER_MEETINGS(upcoming)}
+          ORDER BY m.meeting_date ${upcoming ? 'ASC' : 'DESC'}, me.starred_at IS NULL, lower(t.name), lower(s.name), m.id
           LIMIT $8 OFFSET $9`,
-        [
-          userId,
-          today,
-          page.from ?? null,
-          page.to ?? null,
-          page.teamId ?? null,
-          page.status ?? null,
-          page.q ? likePattern(page.q) : null,
-          page.limit,
-          page.offset,
-        ],
+        [...userMeetingValues(userId, today, page), page.limit, page.offset],
       );
       return rows;
+    },
+
+    async countForUser(userId, today, page) {
+      const { rows } = await db.query<{ n: number }>(
+        `SELECT count(*)::int AS n ${MEETING_FROM} ${USER_MEETINGS(page.when === 'upcoming')}`,
+        userMeetingValues(userId, today, page),
+      );
+      return rows[0]?.n ?? 0;
     },
 
     async find(meetingId, today) {

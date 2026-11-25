@@ -7,6 +7,7 @@ import type {
   MeetingResponse,
   MeetingsResponse,
   MyMeetingsQuery,
+  UpcomingMeetingsResponse,
   CurrentPeriodsResponse,
   PeriodNotesResponse,
   PeriodResponse,
@@ -21,6 +22,7 @@ import type { Response } from 'express';
 import { authOf } from '../../middleware/authenticate.ts';
 import { asyncHandler } from '../../utils/asyncHandler.ts';
 import type { MeetingsService } from './service.ts';
+import type { PeriodNotesPick } from './types.ts';
 
 const idOf = (res: Response) => (res.locals.validated.params as { id: string }).id;
 
@@ -46,12 +48,13 @@ export function createMeetingsController(service: MeetingsService) {
     }),
 
     listForTeam: asyncHandler(async (_req, res) => {
-      const page = res.locals.validated.query as { when: 'upcoming' | 'past'; offset: number };
+      const page = res.locals.validated.query as { when: 'upcoming' | 'past'; offset: number; limit?: number };
       res.json((await service.listForTeam(authOf(res), idOf(res), page)) satisfies MeetingsResponse);
     }),
 
     upcomingForMe: asyncHandler(async (_req, res) => {
-      res.json((await service.upcomingForMe(authOf(res))) satisfies MeetingsResponse);
+      const page = res.locals.validated.query as { offset: number; limit: number };
+      res.json((await service.upcomingForMe(authOf(res), page)) satisfies UpcomingMeetingsResponse);
     }),
 
     listForMe: asyncHandler(async (_req, res) => {
@@ -74,7 +77,8 @@ export function createMeetingsController(service: MeetingsService) {
 
     periodNotes: asyncHandler(async (_req, res) => {
       const { id, key } = res.locals.validated.params as { id: string; key: string };
-      res.json((await service.periodNotes(authOf(res), id, key)) satisfies PeriodNotesResponse);
+      const pick = res.locals.validated.query as PeriodNotesPick;
+      res.json((await service.periodNotes(authOf(res), id, key, pick)) satisfies PeriodNotesResponse);
     }),
 
     currentPeriods: asyncHandler(async (_req, res) => {

@@ -10,9 +10,12 @@ export const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 export const MAX_SERIES_PER_TEAM = 10;
 /** Past meetings come in pages of this size ("Show more"). */
 export const PAST_PAGE_SIZE = 20;
-/** Home lists the meetings of the next two weeks, at most this many (owner, 2026-11-24: five). */
-export const HOME_DAYS = 14;
-export const HOME_LIMIT = 5;
+/**
+ * Home lists the meetings of the next four weeks (as far as meetings are made), a page at a time (owner, 2026-11-25:
+ * the first 5, then all of them in pages). A page holds at most HOME_PAGE_MAX.
+ */
+export const HOME_DAYS = HORIZON_DAYS;
+export const HOME_PAGE_MAX = 20;
 /** The list of my upcoming meetings (a note's "Another meeting" picker) holds at most this many (4 weeks is far fewer). */
 export const MY_UPCOMING_LIMIT = 200;
 /** A meeting can be moved at most this far ahead. */
@@ -46,6 +49,23 @@ export const IdParamsSchema = z.object({ id }).strict();
 /** A period's key: its first month and length in months (`2026-10-3m`); whether it fits the team's split is checked later. */
 export const PeriodParamsSchema = z.object({ id, key: z.string().regex(/^\d{4}-\d{2}-\d{1,2}m$/) }).strict();
 
+/**
+ * Which meetings of a period to send in full (owner, 2026-11-25: a quarter can hold hundreds of notes; the reader
+ * starts with the last three meetings): `all`, ids separated by commas (at most 200), or the `latest` N.
+ */
+export const PeriodNotesQuerySchema = z
+  .object({
+    meetings: z
+      .string()
+      .max(200 * 37)
+      .transform((value) => (value === 'all' ? ('all' as const) : value.split(',')))
+      .pipe(z.union([z.literal('all'), z.array(id).min(1).max(200)]))
+      .optional(),
+    latest: z.coerce.number().int().min(1).max(50).optional(),
+  })
+  .strict();
+export type PeriodNotesPick = z.infer<typeof PeriodNotesQuerySchema>;
+
 const distinctIds = (max: number) =>
   z
     .array(id)
@@ -70,6 +90,16 @@ export const TeamMeetingsQuerySchema = z
   .object({
     when: z.enum(['upcoming', 'past']).default('upcoming'),
     offset: z.coerce.number().int().min(0).max(10_000).default(0),
+    // Only the first few (the team page's next 3 meetings, owner 2026-11-25); without it, the whole list.
+    limit: z.coerce.number().int().min(1).max(20).optional(),
+  })
+  .strict();
+
+/** Home's next meetings: a page of the next four weeks (5 when no limit is given; owner, 2026-11-25). */
+export const UpcomingMeetingsQuerySchema = z
+  .object({
+    offset: z.coerce.number().int().min(0).max(10_000).default(0),
+    limit: z.coerce.number().int().min(1).max(HOME_PAGE_MAX).default(5),
   })
   .strict();
 

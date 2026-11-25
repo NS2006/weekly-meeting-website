@@ -10,8 +10,10 @@ import {
   CreateSeriesSchema,
   IdParamsSchema,
   MyMeetingsQuerySchema,
+  PeriodNotesQuerySchema,
   PeriodParamsSchema,
   TeamMeetingsQuerySchema,
+  UpcomingMeetingsQuerySchema,
   UpdateMeetingSchema,
   UpdateSeriesSchema,
 } from './types.ts';
@@ -33,10 +35,10 @@ export function createMeetingsRoutes(service: MeetingsService): Router {
   router.get('/teams/:id/meetings', byId, validate('query', TeamMeetingsQuerySchema), c.listForTeam);
   router.get('/teams/:id/periods', byId, c.periods);
   router.get('/teams/:id/periods/:key', validate('params', PeriodParamsSchema), c.period);
-  router.get('/teams/:id/periods/:key/notes', validate('params', PeriodParamsSchema), c.periodNotes);
+  router.get('/teams/:id/periods/:key/notes', validate('params', PeriodParamsSchema), validate('query', PeriodNotesQuerySchema), c.periodNotes);
   router.get('/periods/current', c.currentPeriods);
   router.get('/meetings', validate('query', MyMeetingsQuerySchema), c.listForMe);
-  router.get('/meetings/upcoming', c.upcomingForMe);
+  router.get('/meetings/upcoming', validate('query', UpcomingMeetingsQuerySchema), c.upcomingForMe);
   router.get('/meetings/:id', byId, c.get);
   router.get('/meetings/:id/schedule', byId, c.schedule);
   router.patch('/meetings/:id', byId, validate('body', UpdateMeetingSchema), c.update);

@@ -143,6 +143,12 @@ describeDb('meeting series and meetings (integration)', () => {
     // Running the job again creates nothing new.
     expect((await job.refresh({ teamId })).created).toBe(0);
 
+    // The team page's next 3 meetings (owner, 2026-11-25): the first three from today, and more follow.
+    const next = await json<{ meetings: Meeting[]; hasMore: boolean }>(await call(member, 'GET', `/teams/${teamId}/meetings?limit=3`));
+    expect(datesOf(next.meetings)).toEqual(['2026-11-23', '2026-11-25', '2026-11-27']);
+    expect(next.hasMore).toBe(true);
+    for (const bad of ['?limit=0', '?limit=21']) expect((await call(member, 'GET', `/teams/${teamId}/meetings${bad}`)).status).toBe(400);
+
     const list = await json<{ series: Series[] }>(await call(member, 'GET', `/teams/${teamId}/series`));
     expect(list.series.map((s) => s.name)).toEqual(['Weekly sync', 'Planning']);
   });
@@ -338,7 +344,7 @@ describeDb('meeting series and meetings (integration)', () => {
     expect(datesOf(await upcoming(lead, teamId))).toEqual([meeting.date]);
   });
 
-  it("lists my next two weeks of meetings across my teams, not other teams' or deleted teams'", async () => {
+  it("lists my next four weeks of meetings across my teams, not other teams' or deleted teams'", async () => {
     const me = await person('Lina Me');
     const other = await person('Mira Other');
     const first = await team(me, [], 'Alpha');
@@ -348,26 +354,85 @@ describeDb('meeting series and meetings (integration)', () => {
     await series(other, second, [2]);
     await series(other, notMine, [1]);
 
-    const mine = await json<{ meetings: Meeting[] }>(await call(me, 'GET', '/meetings/upcoming'));
+    type Home = { meetings: Meeting[]; hasMore: boolean; total: number };
+    const mine = await json<Home>(await call(me, 'GET', '/meetings/upcoming?limit=20'));
     expect(mine.meetings.map((m) => [m.date, m.teamName])).toEqual([
       ['2026-11-24', 'Beta'],
       ['2026-11-25', 'Alpha'],
       ['2026-12-01', 'Beta'],
       ['2026-12-02', 'Alpha'],
+      ['2026-12-08', 'Beta'],
+      ['2026-12-09', 'Alpha'],
+      ['2026-12-15', 'Beta'],
+      ['2026-12-16', 'Alpha'],
     ]);
+    expect(mine).toMatchObject({ total: 8, hasMore: false });
 
     await call(other, 'DELETE', `/teams/${second}`, { confirmName: 'Beta' });
-    const after = await json<{ meetings: Meeting[] }>(await call(me, 'GET', '/meetings/upcoming'));
-    expect(after.meetings.map((m) => m.teamName)).toEqual(['Alpha', 'Alpha']);
+    const after = await json<Home>(await call(me, 'GET', '/meetings/upcoming?limit=20'));
+    expect(after.meetings.map((m) => m.teamName)).toEqual(['Alpha', 'Alpha', 'Alpha', 'Alpha']);
+    expect(after.total).toBe(4);
   });
 
-  it('lists at most five meetings on Home, soonest first, and says there are more', async () => {
+  it('shows Home the first five meetings, then the next four weeks a page at a time (owner, 2026-11-25)', async () => {
     const me = await person('Hana Me');
     const mine = await team(me, [], 'Daily');
     await series(me, mine, [1, 2, 3, 4, 5]);
-    const home = await json<{ meetings: Meeting[]; hasMore: boolean }>(await call(me, 'GET', '/meetings/upcoming'));
-    expect(home.meetings.map((m) => m.date)).toEqual(['2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26', '2026-11-27']); // the tests' today is Monday 23 Nov
-    expect(home.hasMore).toBe(true);
+    type Home = { meetings: Meeting[]; hasMore: boolean; total: number };
+    const home = async (query = '') => json<Home>(await call(me, 'GET', `/meetings/upcoming${query}`));
+
+    // The tests' today is Monday 23 Nov: four weeks of weekdays, up to Friday 18 Dec.
+    const first = await home();
+    expect(first.meetings.map((m) => m.date)).toEqual(['2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26', '2026-11-27']);
+    expect(first).toMatchObject({ total: 20, hasMore: true });
+
+    const second = await home('?offset=10&limit=10');
+    expect(second.meetings.map((m) => m.date)).toEqual([
+      '2026-12-07',
+      '2026-12-08',
+      '2026-12-09',
+      '2026-12-10',
+      '2026-12-11',
+      '2026-12-14',
+      '2026-12-15',
+      '2026-12-16',
+      '2026-12-17',
+      '2026-12-18',
+    ]);
+    expect(second).toMatchObject({ total: 20, hasMore: false });
+
+    for (const bad of ['?limit=0', '?limit=21', '?offset=-1', '?when=past']) {
+      expect((await call(me, 'GET', `/meetings/upcoming${bad}`)).status).toBe(400);
+    }
+  });
+
+  it('puts the meetings of the teams I starred first on a day they share (owner, 2026-11-25)', async () => {
+    const me = await person('Rafi Me');
+    const other = await person('Sinta Other');
+    const kilo = await team(me, [], 'Kilo');
+    const lima = await team(other, [me], 'Lima');
+    await series(me, kilo, [4]); // Thursdays for both: 26 Nov, 3, 10 and 17 Dec
+    await series(other, lima, [4, 5]); // and Fridays for Lima only
+    type Home = { meetings: Meeting[] };
+    const day = async (who: Person) =>
+      (await json<Home>(await call(who, 'GET', '/meetings/upcoming?limit=4'))).meetings.map((m) => [m.date, m.teamName]);
+
+    // By day, then by team name.
+    expect(await day(me)).toEqual([
+      ['2026-11-26', 'Kilo'],
+      ['2026-11-26', 'Lima'],
+      ['2026-11-27', 'Lima'],
+      ['2026-12-03', 'Kilo'],
+    ]);
+    // Lima starred: first on the days both meet; the days stay in order. Only for me.
+    expect((await call(me, 'PUT', `/teams/${lima}/star`)).status).toBe(200);
+    expect(await day(me)).toEqual([
+      ['2026-11-26', 'Lima'],
+      ['2026-11-26', 'Kilo'],
+      ['2026-11-27', 'Lima'],
+      ['2026-12-03', 'Lima'],
+    ]);
+    expect((await day(other)).map(([date]) => date)).toEqual(['2026-11-26', '2026-11-27', '2026-12-03', '2026-12-04']);
   });
 
   it('lists all my meetings for the Meetings page: across my teams, by team, upcoming or past, with their days', async () => {
@@ -506,9 +571,47 @@ describeDb('meeting series and meetings (integration)', () => {
     expect((await periods(mo)).periods[1]?.noteCount).toBe(1);
     expect((await call(out, 'GET', `/teams/${teamId}/periods/2026-10-3m/notes`)).status).toBe(404);
 
+    // Only the meetings asked for come in full (owner, 2026-11-25); the index lists every meeting with notes, without text.
+    for (const meeting of period.meetings.slice(1, 3)) {
+      const more = await json<{ note: { id: string; version: number } }>(await call(mo, 'POST', '/notes', { title: 'Later', meetingId: meeting.id }));
+      await call(mo, 'PATCH', `/notes/${more.note.id}`, { content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'More.' }] }] }, version: more.note.version });
+    }
+    type Picked = { index: { date: string; people: { name: string }[] }[]; meetings: { date: string }[] };
+    const picked = async (query: string) => json<Picked>(await call(lead, 'GET', `/teams/${teamId}/periods/2026-10-3m/notes${query}`));
+    const latest = await picked('?latest=2');
+    expect(latest.index.map((m) => m.date)).toEqual(['2026-11-26', '2026-12-03', '2026-12-10']);
+    expect(latest.index[0]?.people).toEqual([{ userId: mo.id, name: 'Mo Quarter' }]);
+    expect(JSON.stringify(latest.index)).not.toContain('Shipped it.');
+    expect(latest.meetings.map((m) => m.date)).toEqual(['2026-12-03', '2026-12-10']);
+    expect((await picked(`?meetings=${first.id}`)).meetings.map((m) => m.date)).toEqual(['2026-11-26']);
+    expect((await picked('?meetings=all')).meetings).toHaveLength(3);
+    expect((await picked('')).meetings).toHaveLength(3); // nothing asked: all of them
+    for (const bad of ['?meetings=abc', '?meetings=', '?latest=0', '?latest=51', '?extra=1']) {
+      expect((await call(lead, 'GET', `/teams/${teamId}/periods/2026-10-3m/notes${bad}`)).status).toBe(400);
+    }
+
     // Home: the current period of each of my teams.
     const current = await json<{ teams: { teamId: string; period: Summary }[] }>(await call(mo, 'GET', '/periods/current'));
-    expect(current.teams.find((t) => t.teamId === teamId)?.period).toMatchObject({ label: 'Q4 2026', meetingCount: 4, noteCount: 1 });
+    // (3 notes: the one above and the two written for the "only the meetings asked for" checks.)
+    expect(current.teams.find((t) => t.teamId === teamId)?.period).toMatchObject({ label: 'Q4 2026', meetingCount: 4, noteCount: 3 });
+  });
+
+  it("shows Home each team's current period and the ones that start in the next four weeks (owner, 2026-11-25)", async () => {
+    const lead = await person('Oscar Months');
+    const monthly = await team(lead, [], 'Monthly');
+    const quarterly = await team(lead, [], 'Quarterly Too');
+    expect((await call(lead, 'PATCH', `/teams/${monthly}`, { periodsPerYear: 12 })).status).toBe(200);
+    await series(lead, monthly, [4]); // Thursdays: 26 Nov, then 3, 10 and 17 Dec
+    await series(lead, quarterly, [4]);
+
+    type Entry = { teamId: string; teamName: string; period: { key: string; label: string; status: string; meetingCount: number } };
+    const { teams } = await json<{ teams: Entry[] }>(await call(lead, 'GET', '/periods/current'));
+    // Today is Monday 23 Nov: November is current, and December starts within the four weeks; Q4 covers them all.
+    expect(teams.map((e) => [e.teamName, e.period.label, e.period.status, e.period.meetingCount])).toEqual([
+      ['Monthly', 'Nov 2026', 'current', 1],
+      ['Monthly', 'Dec 2026', 'upcoming', 3],
+      ['Quarterly Too', 'Q4 2026', 'current', 4],
+    ]);
   });
 
   it('freezes a deleted team: no changes, no new meetings; restoring brings them back', async () => {
