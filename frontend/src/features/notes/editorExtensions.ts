@@ -13,10 +13,11 @@ import { NoteDocument, ProjectSection } from './projectSection';
  * and mark types it does not know, and drops attribute values it does not accept. The placeholders are read in the
  * interface language when they are drawn (an empty line shown before a language switch changes once it is redrawn).
  */
-export function noteExtensions() {
+export function noteExtensions(options: { isFrozen?: (projectId: string) => boolean } = {}) {
   return [
     NoteDocument,
-    ProjectSection,
+    // Parts of an archived project are frozen (owner, 2026-11-25); without `isFrozen`, none is.
+    ProjectSection.configure({ isFrozen: options.isFrozen ?? (() => false) }),
     StarterKit.configure({
       document: false, // NoteDocument: blocks or project sections at the top level
       heading: { levels: [1, 2, 3] },

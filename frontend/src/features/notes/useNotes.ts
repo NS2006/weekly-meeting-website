@@ -1,5 +1,5 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreateNoteRequest, NoteResponse, NotesQuery } from '@weekly-meeting/shared';
+import type { CreateNoteRequest, NoteMeeting, NoteResponse, NotesQuery } from '@weekly-meeting/shared';
 import { api } from '../../services/api';
 
 export const NOTES_KEY = ['notes'] as const;
@@ -79,6 +79,39 @@ export function useNoteMeetingLink() {
       linked ? api.linkNoteToMeeting(noteId, meetingId) : api.unlinkNoteFromMeeting(noteId, meetingId),
     onSuccess: ({ meetings }, { noteId }) => {
       queryClient.setQueryData<NoteResponse>([...NOTES_KEY, 'one', noteId], (old) => (old ? { note: { ...old.note, meetings } } : old));
+    },
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: [...NOTES_KEY, 'mine'] }),
+        queryClient.invalidateQueries({ queryKey: ['meetings'] }),
+      ]),
+  });
+}
+
+/**
+ * "Share…" on the Notes page: puts one or several of my notes on a meeting, or takes them off it, one note after the
+ * other. `onEach` hands back each note's meetings as soon as it is saved, so a failure part-way still shows what was
+ * saved; the lists refresh once at the end.
+ */
+export function useShareNotes() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      noteIds,
+      meetingId,
+      linked,
+      onEach,
+    }: {
+      noteIds: readonly string[];
+      meetingId: string;
+      linked: boolean;
+      onEach: (noteId: string, meetings: NoteMeeting[]) => void;
+    }) => {
+      for (const noteId of noteIds) {
+        const { meetings } = linked ? await api.linkNoteToMeeting(noteId, meetingId) : await api.unlinkNoteFromMeeting(noteId, meetingId);
+        queryClient.setQueryData<NoteResponse>([...NOTES_KEY, 'one', noteId], (old) => (old ? { note: { ...old.note, meetings } } : old));
+        onEach(noteId, meetings);
+      }
     },
     onSettled: () =>
       Promise.all([

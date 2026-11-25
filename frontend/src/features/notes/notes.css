@@ -813,6 +813,24 @@ img.ProseMirror-separator {
   border-radius: var(--blue-radius-md);
   background: color-mix(in srgb, var(--blue-color-blue-50) 45%, var(--blue-color-surface-default));
 }
+/* The section a note was opened at from a project page's "Edit": lit for a moment, then as usual (FOUND_MS). */
+.note-prose .note-section--found {
+  animation: note-section-found 2.4s var(--app-ease);
+}
+@keyframes note-section-found {
+  0%,
+  45% {
+    border-color: var(--blue-color-brand-primary);
+    background: var(--blue-color-blue-100);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue-color-brand-primary) 22%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .note-prose .note-section--found {
+    animation: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue-color-brand-primary) 30%, transparent);
+  }
+}
 .note-prose .note-section--untagged {
   border-color: var(--blue-color-border-default);
   border-left-color: var(--blue-color-neutral-400);
@@ -895,6 +913,17 @@ img.ProseMirror-separator {
 }
 .note-section--untagged .note-section__dot {
   background: var(--blue-color-neutral-400);
+}
+/* An archived project's part (owner, 2026-11-25): frozen, so quieter, and its chip is a label, not a menu. */
+.note-prose .note-section--frozen {
+  border-color: var(--blue-color-border-default);
+  border-left-color: var(--blue-color-neutral-400);
+  background: var(--blue-color-surface-subtle);
+}
+.note-section__chip--frozen {
+  background: var(--blue-color-surface-muted);
+  color: var(--blue-color-text-secondary);
+  cursor: default;
 }
 .note-section__archived {
   padding: 0 6px;
@@ -987,6 +1016,37 @@ img.ProseMirror-separator {
 .project-menu__note {
   padding: var(--blue-space-2);
   color: var(--blue-color-text-secondary);
+}
+/* "+ Create project “…”" / "+ New project" under the list (owner, 2026-11-25), and why a create failed. */
+.project-menu__create {
+  display: block;
+  width: 100%;
+  margin-top: var(--blue-space-1);
+  padding: var(--blue-space-2);
+  border: 0;
+  border-radius: var(--blue-radius-sm);
+  background: transparent;
+  color: var(--blue-color-brand-primary-active);
+  font: inherit;
+  font-weight: var(--blue-font-weight-semibold);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.project-menu__create:hover:not(:disabled),
+.project-menu__create:focus-visible {
+  background: var(--blue-color-surface-muted);
+  outline: none;
+}
+.project-menu__create:disabled {
+  color: var(--blue-color-text-secondary);
+  cursor: progress;
+}
+.project-menu__error {
+  margin: var(--blue-space-1) 0 0;
+  padding: 0 var(--blue-space-2);
+  color: var(--blue-color-feedback-error);
+  font-size: var(--blue-font-size-xs);
 }
 .project-menu__footer {
   margin-top: var(--blue-space-2);
@@ -1110,6 +1170,19 @@ img.ProseMirror-separator {
 .update__date {
   color: var(--blue-color-text-secondary);
   font-size: var(--blue-font-size-xs);
+}
+/* The date and, for an active project, "Edit" (opens the note at this update). */
+.update__side {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--blue-space-2) var(--blue-space-3);
+}
+.update__edit {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--blue-space-1);
+  text-decoration: none;
 }
 .note-prose--static {
   min-height: 0;
@@ -1268,32 +1341,27 @@ img.ProseMirror-separator {
 }
 
 /* The Notes page's filters: words, project, shared, then "More filters" (days written, order) on a row of its own. */
-.note-filters {
-  grid-template-columns: minmax(220px, 2fr) repeat(2, minmax(150px, 1fr)) auto;
-}
-.note-filters__extra {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(150px, 1fr));
-  gap: var(--blue-space-3);
-  align-items: end;
+/* Every filter in view (owner, 2026-11-25): one row on a wide screen (the words wider); two rows of three on a
+   narrower one; on a phone two to a row, the words and the order across. `.filter-bar.` so these win over the
+   general filter bar (app.css), which comes later. */
+.filter-bar.note-filters {
+  grid-template-columns: minmax(200px, 1.6fr) repeat(5, minmax(0, 1fr));
 }
 /* A list's longest choice (a long team name) must not widen the page: the boxes shrink to their column. */
-.note-filters > *,
-.note-filters__extra > * {
+.note-filters > * {
   min-width: 0;
 }
+@media (max-width: 1100px) {
+  .filter-bar.note-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
 @media (max-width: 720px) {
-  .note-filters {
+  .filter-bar.note-filters {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
-  .note-filters__more {
-    grid-column: 1 / -1;
-  }
-  .note-filters__extra {
-    grid-template-columns: 1fr 1fr;
-  }
-  .note-filters__extra > :last-child {
+  .note-filters > .filter-bar__search,
+  .note-filters > :last-child {
     grid-column: 1 / -1;
   }
 }
@@ -1302,97 +1370,148 @@ img.ProseMirror-separator {
 .note-results {
   scroll-margin-top: calc(var(--app-header-height, 57px) + var(--blue-space-4));
 }
-/* A row: the note's link, and its "⋯" menu on the right (beside the link, not inside it). The list's card lets the
-   menu of its last rows reach past its edge (.tile clips its content otherwise). */
+/* The list's card lets what opens from it (the Download menu) reach past its edge (.tile clips its content otherwise). */
 .tile.note-timeline {
   overflow: visible;
 }
+/* A row: the box to pick it, then the note (the link). Picked rows are tinted, as in OneDrive. */
 .note-item {
   position: relative;
-}
-.note-item > .note-row {
-  padding-right: 56px;
-}
-.note-actions {
-  position: absolute;
-  top: 50%;
-  right: var(--blue-space-2);
-  z-index: 1;
-  transform: translateY(-50%);
-}
-/* The open menu above the rows after it (and their buttons), still under the sticky header (z-index 10). */
-.note-actions--open {
-  z-index: 5;
-}
-.note-actions__button {
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  border-radius: var(--blue-radius-md);
+}
+.note-item--picked {
+  background: var(--blue-color-blue-50);
+}
+/* The strip left of the date: the row's full height, so a click anywhere on it ticks the box. */
+.note-pick {
+  display: grid;
+  align-self: stretch;
   place-items: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid transparent;
-  border-radius: var(--blue-radius-md);
-  background: none;
-  color: var(--blue-color-text-secondary);
+  padding: 0 var(--blue-space-2) 0 var(--blue-space-3);
+  border-radius: var(--blue-radius-md) 0 0 var(--blue-radius-md);
   cursor: pointer;
-  transition:
-    background-color var(--app-duration-fast) var(--app-ease),
-    border-color var(--app-duration-fast) var(--app-ease);
+  transition: background-color var(--app-duration-fast) var(--app-ease);
 }
-.note-actions__button:hover:not(:disabled),
-.note-actions__button[aria-expanded='true'] {
-  border-color: var(--blue-color-border-default);
-  background: var(--blue-color-surface-default);
-  color: var(--blue-color-text-primary);
-}
-.note-actions__button:focus-visible {
-  outline: 2px solid var(--blue-color-border-focus);
-  outline-offset: 1px;
-}
-.note-actions__button:disabled {
-  cursor: progress;
-  opacity: 0.6;
-}
-.note-actions__menu {
-  position: absolute;
-  top: calc(100% + var(--blue-space-1));
-  right: 0;
-  z-index: 20;
-  min-width: 220px;
-  padding: var(--blue-space-2);
-  border: 1px solid var(--blue-color-border-default);
-  border-radius: var(--blue-radius-lg);
-  background: var(--blue-color-surface-default);
-  box-shadow: var(--blue-shadow-lg);
-  animation: app-fade var(--app-duration-fast) var(--app-ease);
-}
-.note-actions__item {
-  display: block;
-  width: 100%;
-  padding: var(--blue-space-2) var(--blue-space-3);
-  border: 0;
-  border-radius: var(--blue-radius-md);
-  background: none;
-  color: var(--blue-color-text-primary);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.note-actions__item:hover,
-.note-actions__item:focus-visible {
+.note-pick:hover {
   background: var(--blue-color-surface-muted);
-  outline: none;
 }
-.note-actions__item:disabled {
-  color: var(--blue-color-text-secondary);
-  cursor: progress;
+.note-item--picked .note-pick:hover {
+  background: var(--blue-color-blue-100);
 }
-.note-actions__item--danger {
-  color: var(--blue-color-feedback-error);
+.note-select {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--blue-color-brand-primary);
+  cursor: pointer;
+}
+.note-select:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+}
+.note-select--page {
+  margin-left: var(--blue-space-3);
 }
 
-/* "Share on a meeting…" from the Notes page: the editor's meeting list, always open, scrolling inside the dialog. */
+/* "Share…" from the Notes page: one list of meetings with a box each, the only part that scrolls. */
+.share-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--blue-space-3);
+}
+.share-dialog__lead {
+  margin: 0;
+  color: var(--blue-color-text-secondary);
+}
 .share-dialog__list {
-  max-height: min(55vh, 420px);
+  max-height: min(50vh, 380px);
   overflow-y: auto;
-  margin: 0 calc(-1 * var(--blue-space-2));
+  border: 1px solid var(--blue-color-border-default);
+  border-radius: var(--blue-radius-md);
+  overscroll-behavior: contain;
+}
+.share-dialog__heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: var(--blue-space-2) var(--blue-space-3);
+  border-bottom: 1px solid var(--blue-color-border-default);
+  background: var(--blue-color-surface-subtle);
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-xs);
+  font-weight: var(--blue-font-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.share-dialog__group + .share-dialog__group .share-dialog__heading {
+  border-top: 1px solid var(--blue-color-border-default);
+}
+.share-dialog__choices {
+  margin: 0;
+  padding: var(--blue-space-1);
+  list-style: none;
+}
+.share-dialog__empty {
+  margin: 0;
+  padding: var(--blue-space-4) var(--blue-space-3);
+  color: var(--blue-color-text-secondary);
+}
+.share-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--blue-space-3);
+  padding: var(--blue-space-2) var(--blue-space-3);
+  border-radius: var(--blue-radius-sm);
+  cursor: pointer;
+  transition: background-color var(--app-duration-fast) var(--app-ease);
+}
+.share-choice:hover {
+  background: var(--blue-color-surface-muted);
+}
+.share-choice--on {
+  background: var(--blue-color-blue-50);
+}
+.share-choice--on:hover {
+  background: var(--blue-color-blue-100);
+}
+.share-choice__box {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--blue-color-brand-primary);
+  cursor: pointer;
+}
+.share-choice__box:focus-visible {
+  outline: 2px solid var(--blue-color-border-focus);
+  outline-offset: 2px;
+}
+.share-choice__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.share-choice__name {
+  overflow-wrap: anywhere;
+}
+.share-choice--on .share-choice__name {
+  color: var(--blue-color-brand-primary-active);
+  font-weight: var(--blue-font-weight-semibold);
+}
+.share-choice__team {
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-sm);
+}
+.share-dialog__status {
+  min-height: 1.4em;
+  margin: 0;
+  color: var(--blue-color-text-secondary);
+  font-size: var(--blue-font-size-sm);
+}
+.share-dialog__list[aria-busy="true"] .share-choice {
+  cursor: progress;
 }

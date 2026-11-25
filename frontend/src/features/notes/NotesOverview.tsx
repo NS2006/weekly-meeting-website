@@ -14,9 +14,10 @@ import { useFilterParams } from '../../utils/useFilterParams';
 import { DateTile } from '../meetings/MeetingParts';
 import { meetingName } from '../meetings/meetingName';
 import { groupByMonth } from './months';
-import { NoteActions } from './NoteActions';
+import { NoteCommandBar } from './NoteCommandBar';
 import { NoteFilters } from './NoteFilters';
 import { CLEARED, isFiltered, listDateOf, NOTES_PER_PAGE, notesQuery, readNoteFilters, readPage } from './listFilters';
+import { pageState, pickedOnPage, toggleNote, togglePage } from './selection';
 import { ShareNoteDialog } from './ShareNoteDialog';
 import { useCopyNote, useCreateNote, useDeleteNote, useNotesPage } from './useNotes';
 import { useNoteDownload } from './useNoteDownload';
@@ -27,8 +28,11 @@ const codeOf = (error: unknown) => (error instanceof ApiFailure ? error.code : e
 /**
  * The Notes page: my notes, one page of 20 at a time, filtered, sorted and counted on the server (words, project,
  * where shared, days written, order; all in the address with the page, so Back and a reload show the same list).
- * Rows are grouped by month; each has a "⋯" menu: Make a copy (opens the copy), Share on a meeting…, Download as
- * Word / PDF (the note alone, in English, as every download), Delete….
+ * Rows are grouped by month, each with a box to pick it (owner, 2026-11-25, like OneDrive: no "⋯" menu). Once notes
+ * are picked, a bar over the list acts on them: Open for one; Share on a meeting… (several at once, too), Make a copy
+ * (one opens the copy), Download as Word / PDF (a file a note, in English, as every download) and Delete… for one or
+ * several. The whole strip left of a row's date ticks its box. Changing the page or the filters lets go of them; so
+ * does Escape.
  */
 export function NotesOverview({ user }: { user: Me }) {
   const { t } = useTranslation();
@@ -42,9 +46,13 @@ export function NotesOverview({ user }: { user: Me }) {
   const copy = useCopyNote();
   const remove = useDeleteNote();
   const download = useNoteDownload(user);
-  const [sharing, setSharing] = useState<NoteSummary | null>(null);
-  const [deleting, setDeleting] = useState<NoteSummary | null>(null);
-  const [deleted, setDeleted] = useState<string | null>(null);
+  const [sharing, setSharing] = useState<NoteSummary[] | null>(null);
+  const [deleting, setDeleting] = useState<NoteSummary[] | null>(null);
+  const [deleted, setDeleted] = useState<{ one: string } | { count: number } | null>(null);
+  const [copied, setCopied] = useState<number | null>(null);
+  const [copyingMany, setCopyingMany] = useState<{ at: number; count: number } | null>(null);
+  const [deletingMany, setDeletingMany] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
   const top = useRef<HTMLDivElement>(null);
 
   const list = notes.data?.notes ?? [];
@@ -59,6 +67,12 @@ export function NotesOverview({ user }: { user: Me }) {
   const progress = download.progress;
   const outcome = download.outcome;
   const titleOf = (note: NoteSummary) => note.title || t('notes.untitled');
+  const pageIds = list.map((note) => note.id);
+  const chosen = pickedOnPage(picked, list);
+  const allState = pageState(picked, pageIds);
+
+  // Another page, other filters or another order: the picked notes are let go.
+  useEffect(() => setPicked([]), [location.search]);
 
   // A page past the end (the last note on it deleted, or an old link) goes to the last page there is.
   const { update } = params;
@@ -68,6 +82,7 @@ export function NotesOverview({ user }: { user: Me }) {
 
   const change = (patch: Record<string, string | undefined>) => {
     setDeleted(null);
+    setCopied(null);
     params.update({ ...patch, page: '' }); // a new filter starts from the first page
   };
   const goTo = (next: number) => {
@@ -75,11 +90,50 @@ export function NotesOverview({ user }: { user: Me }) {
     top.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   };
   const newNote = () => create.mutate({}, { onSuccess: ({ note }) => void navigate(`/notes/${note.id}`) });
-  const makeCopy = (note: NoteSummary) =>
-    copy.mutate(
-      { id: note.id, title: t('notes.actions.copyTitle', { title: titleOf(note) }).slice(0, 200) },
-      { onSuccess: ({ note: made }) => void navigate(`/notes/${made.id}`, { state: back }) },
-    );
+  const copyTitle = (note: NoteSummary) => t('notes.actions.copyTitle', { title: titleOf(note) }).slice(0, 200);
+  // One note: the copy opens. Several: each is copied in turn and the list shows them; the picked notes stay picked.
+  const makeCopies = async (notesToCopy: NoteSummary[]) => {
+    const [only] = notesToCopy;
+    if (notesToCopy.length === 1 && only) {
+      copy.mutate({ id: only.id, title: copyTitle(only) }, { onSuccess: ({ note: made }) => void navigate(`/notes/${made.id}`, { state: back }) });
+      return;
+    }
+    setCopied(null);
+    copy.reset();
+    let made = 0;
+    try {
+      for (const note of notesToCopy) {
+        setCopyingMany({ at: made + 1, count: notesToCopy.length });
+        await copy.mutateAsync({ id: note.id, title: copyTitle(note) });
+        made += 1;
+      }
+    } catch {
+      // The error shows above the list (copy.error); the ones made so far stay.
+    } finally {
+      setCopyingMany(null);
+      if (made > 0) setCopied(made);
+    }
+  };
+  // Deletes the picked notes one by one; stops at the first that fails (its error shows in the dialog).
+  const deleteNotes = async (notesToDelete: NoteSummary[]) => {
+    remove.reset();
+    setDeletingMany(true);
+    let gone = 0;
+    try {
+      for (const note of notesToDelete) {
+        await remove.mutateAsync(note.id);
+        gone += 1;
+      }
+      const [only] = notesToDelete;
+      setDeleted(notesToDelete.length === 1 && only ? { one: titleOf(only) } : { count: gone });
+      setDeleting(null);
+      setPicked([]);
+    } catch {
+      // Shown in the dialog; the notes already deleted are gone from the list.
+    } finally {
+      setDeletingMany(false);
+    }
+  };
 
   return (
     <div className="stack">
@@ -106,11 +160,26 @@ export function NotesOverview({ user }: { user: Me }) {
       ) : null}
       {deleted !== null ? (
         <BlueAlert variant="success" onDismiss={() => setDeleted(null)}>
-          <Trans i18nKey="notes.actions.deleted" components={{ name: <EntityName>{deleted}</EntityName> }} />
+          {'one' in deleted ? (
+            <Trans i18nKey="notes.actions.deleted" components={{ name: <EntityName>{deleted.one}</EntityName> }} />
+          ) : (
+            t('notes.select.deletedMany', { count: deleted.count })
+          )}
+        </BlueAlert>
+      ) : null}
+      {copied !== null ? (
+        <BlueAlert variant="success" onDismiss={() => setCopied(null)}>
+          {t('notes.select.copied', { count: copied })}
         </BlueAlert>
       ) : null}
 
-      <div ref={top} className="note-results">
+      <div
+        ref={top}
+        className="note-results"
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && chosen.length > 0 && !event.defaultPrevented) setPicked([]);
+        }}
+      >
         {notes.isPending ? (
           <div className="tile note-list" role="status" aria-label={t('notes.overview.loading')}>
             {[0, 1, 2].map((i) => (
@@ -142,6 +211,23 @@ export function NotesOverview({ user }: { user: Me }) {
           </div>
         ) : (
           <div className={`tile note-timeline ${notes.isPlaceholderData ? 'is-refreshing' : ''}`.trim()}>
+            {chosen.length > 0 ? (
+              <NoteCommandBar
+                count={chosen.length}
+                copying={copy.isPending || copyingMany !== null}
+                downloading={progress !== null}
+                deleting={deletingMany}
+                onOpen={() => chosen[0] && void navigate(`/notes/${chosen[0].id}`, { state: back })}
+                onShare={() => setSharing(chosen)}
+                onCopy={() => void makeCopies(chosen)}
+                onDownload={(kind) => void download.startMany(chosen, kind)}
+                onDelete={() => {
+                  remove.reset();
+                  setDeleting(chosen);
+                }}
+                onClear={() => setPicked([])}
+              />
+            ) : null}
             <Paged
               current={page}
               total={total}
@@ -151,11 +237,26 @@ export function NotesOverview({ user }: { user: Me }) {
               onChange={goTo}
               head={
                 <>
+                  <input
+                    type="checkbox"
+                    className="note-select note-select--page"
+                    aria-label={t('notes.select.page')}
+                    title={t('notes.select.page')}
+                    checked={allState === 'all'}
+                    ref={(box) => {
+                      if (box) box.indeterminate = allState === 'some';
+                    }}
+                    onChange={() => setPicked((now) => togglePage(now, pageIds))}
+                  />
                   <span className="note-results__count" role="status">
-                    {copy.isPending
+                    {copyingMany
+                      ? t('notes.select.copying', { at: copyingMany.at, count: copyingMany.count })
+                      : copy.isPending
                       ? t('notes.overview.copying')
                       : progress
-                        ? progress.total > 0
+                        ? progress.items > 1
+                          ? t('notes.select.downloading', { at: progress.item, count: progress.items, kind: progress.kind === 'docx' ? 'Word' : 'PDF' })
+                          : progress.total > 0
                           ? t(`periods.reader.save.${word(progress.kind)}.progressPictures`, { done: progress.done, total: progress.total })
                           : t(`periods.reader.save.${word(progress.kind)}.progress`)
                         : lastPage > 1
@@ -179,7 +280,17 @@ export function NotesOverview({ user }: { user: Me }) {
                   <h2 className="note-timeline__month">{group.label}</h2>
                   <ol className="note-list">
                     {group.items.map((note) => (
-                      <li key={note.id} className="note-item">
+                      <li key={note.id} className={`note-item${picked.includes(note.id) ? ' note-item--picked' : ''}`}>
+                        {/* The whole strip left of the date ticks the box, not only the box itself (owner, 2026-11-25). */}
+                        <label className="note-pick">
+                          <input
+                            type="checkbox"
+                            className="note-select"
+                            aria-label={t('notes.select.one', { title: titleOf(note) })}
+                            checked={picked.includes(note.id)}
+                            onChange={() => setPicked((now) => toggleNote(now, note.id))}
+                          />
+                        </label>
                         <Link to={`/notes/${note.id}`} state={back} className="note-row">
                           <DateTile date={todayWib(new Date(listDateOf(filters.sort, note)))} today={today} />
                           <span className="note-row__text">
@@ -210,18 +321,6 @@ export function NotesOverview({ user }: { user: Me }) {
                             </span>
                           </span>
                         </Link>
-                        <NoteActions
-                          title={titleOf(note)}
-                          busy={copy.isPending}
-                          downloading={progress !== null}
-                          onCopy={() => makeCopy(note)}
-                          onShare={() => setSharing(note)}
-                          onDownload={(kind) => void download.start(note, kind)}
-                          onDelete={() => {
-                            remove.reset();
-                            setDeleting(note);
-                          }}
-                        />
                       </li>
                     ))}
                   </ol>
@@ -232,29 +331,24 @@ export function NotesOverview({ user }: { user: Me }) {
         )}
       </div>
 
-      {sharing ? <ShareNoteDialog note={sharing} onClose={() => setSharing(null)} /> : null}
+      {sharing ? <ShareNoteDialog notes={sharing} onClose={() => setSharing(null)} /> : null}
       <ConfirmDialog
         open={deleting !== null}
         danger
         title={
-          <Trans i18nKey="notes.actions.deleteTitle" components={{ name: <EntityName>{deleting ? titleOf(deleting) : ''}</EntityName> }} />
+          deleting && deleting.length > 1 ? (
+            t('notes.select.deleteTitle', { count: deleting.length })
+          ) : (
+            <Trans i18nKey="notes.actions.deleteTitle" components={{ name: <EntityName>{deleting?.[0] ? titleOf(deleting[0]) : ''}</EntityName> }} />
+          )
         }
-        confirmLabel={t('notes.editor.deleteNote')}
-        busy={remove.isPending}
+        confirmLabel={deleting && deleting.length > 1 ? t('notes.select.deleteConfirm', { count: deleting.length }) : t('notes.editor.deleteNote')}
+        busy={deletingMany}
         error={remove.error ? errorLabel(codeOf(remove.error) ?? 'unknown_error') : null}
         onCancel={() => setDeleting(null)}
-        onConfirm={() => {
-          if (!deleting) return;
-          const gone = deleting;
-          remove.mutate(gone.id, {
-            onSuccess: () => {
-              setDeleting(null);
-              setDeleted(titleOf(gone));
-            },
-          });
-        }}
+        onConfirm={() => deleting && void deleteNotes(deleting)}
       >
-        {t('notes.editor.deleteBody')}
+        {deleting && deleting.length > 1 ? t('notes.select.deleteBody') : t('notes.editor.deleteBody')}
       </ConfirmDialog>
     </div>
   );

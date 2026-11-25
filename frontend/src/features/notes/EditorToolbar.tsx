@@ -5,6 +5,7 @@ import { BlueSelect } from '../../components/blue';
 import { LinkDialog } from './LinkDialog';
 import { TEXT_COLORS } from './palette';
 import { useDismiss } from '../../hooks/useDismiss';
+import { useNoteProjects } from './noteProjects';
 import { ProjectMenu } from './ProjectMenu';
 import { sectionAtSelection, tagWithProject, usePasteSection } from './projectSection';
 import {
@@ -246,6 +247,9 @@ function ProjectButton({ editor, sectionProject }: { editor: Editor; sectionProj
   const close = useCallback(() => setOpen(false), []);
   useDismiss(ref, open, close);
   const inSection = sectionProject !== null;
+  // Inside an archived project's part (frozen): its project cannot be changed, nothing can be pasted into it.
+  const { find } = useNoteProjects();
+  const frozen = sectionProject ? find(sectionProject)?.status === 'archived' : false;
   const { copied, pasting, error, paste } = usePasteSection(editor);
   // A copied section goes after the top-level block the cursor is in (a section cannot sit inside another block).
   const pasteHere = async () => {
@@ -262,14 +266,15 @@ function ProjectButton({ editor, sectionProject }: { editor: Editor; sectionProj
         className={`note-tool note-tool--wide ${inSection ? 'note-tool--active' : ''}`.trim()}
         aria-haspopup="menu"
         aria-expanded={open}
-        title={inSection ? t('notes.toolbar.projectChange') : t('notes.toolbar.projectTag')}
+        title={frozen ? t('notes.section.frozenTool') : inSection ? t('notes.toolbar.projectChange') : t('notes.toolbar.projectTag')}
+        disabled={frozen}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => setOpen((v) => !v)}
       >
         <ProjectIcon />
         <span>{t('notes.toolbar.project')}</span>
       </button>
-      {open ? (
+      {open && !frozen ? (
         <ProjectMenu
           className="note-project-tool__menu"
           current={sectionProject || null}

@@ -13,7 +13,7 @@ import { useNoteMeetingLink } from './useNotes';
 const codeOf = (error: unknown) => (error instanceof ApiFailure ? error.code : error ? 'unknown_error' : null);
 
 /** "Weekly sync · Wed 25 Nov", or the meeting's own title. */
-const meetingLabel = (m: Pick<MeetingView, 'seriesName' | 'date'>) => `${meetingName(m)} · ${formatDay(m.date)}`;
+export const meetingLabel = (m: Pick<MeetingView, 'seriesName' | 'date'>) => `${meetingName(m)} · ${formatDay(m.date)}`;
 
 /** Suggestions only for notes written lately: an old note is rarely meant for this week's meeting. */
 const SUGGEST_FOR_DAYS = 14;

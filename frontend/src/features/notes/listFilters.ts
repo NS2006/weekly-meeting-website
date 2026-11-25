@@ -1,7 +1,7 @@
 import type { NoteSort, NotesQuery } from '@weekly-meeting/shared';
 
-/** Notes per page on the Notes page. */
-export const NOTES_PER_PAGE = 20;
+/** Notes per page on the Notes page (owner, 2026-11-25: ten, so a long list is split early). */
+export const NOTES_PER_PAGE = 10;
 
 /** The Notes page's filters, as kept in the address (an empty string: not filtered). */
 export interface NoteListFilters {
@@ -41,22 +41,13 @@ export function readNoteFilters(get: (key: string) => string): NoteListFilters {
   };
 }
 
-/** The page in the address: 1 when missing or not a page number. */
-export function readPage(get: (key: string) => string): number {
-  const page = Number(get('page'));
-  return Number.isInteger(page) && page >= 1 && page <= 10_000 ? page : 1;
-}
+export { readPage } from '../../utils/pageParam';
 
 /** What the server is asked for one page. */
 export function notesQuery(filters: NoteListFilters, page: number): NotesQuery {
   const query: NotesQuery = { sort: filters.sort, offset: (page - 1) * NOTES_PER_PAGE, limit: NOTES_PER_PAGE };
   for (const key of ['q', 'project', 'shared', 'team', 'from', 'to'] as const) if (filters[key]) Object.assign(query, { [key]: filters[key] });
   return query;
-}
-
-/** How many of the filters behind "More filters" are set (written from, to, and an order other than newest first). */
-export function moreFiltersInUse(filters: NoteListFilters): number {
-  return [filters.from, filters.to, filters.sort !== 'newest'].filter(Boolean).length;
 }
 
 /** Whether anything narrows the list (the order alone does not). */

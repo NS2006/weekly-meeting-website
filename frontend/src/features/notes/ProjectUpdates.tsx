@@ -13,9 +13,17 @@ import './notes.css';
 
 const codeOf = (error: unknown) => (error instanceof ApiFailure ? error.code : error ? 'unknown_error' : null);
 
+const PencilIcon = () => (
+  <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12.5 4.5l3 3M4 16l1-4 8.5-8.5a1.4 1.4 0 0 1 2 0l1 1a1.4 1.4 0 0 1 0 2L8 15l-4 1z" />
+  </svg>
+);
+
 /**
  * The project's updates (FR-12): every part of my notes tagged with this project, newest note first, shown read-only
- * with a link to its note. "Write an update" opens a new note that already has this project's section.
+ * with a link to its note. "Edit" (owner, 2026-11-25; and the note's title) opens that note at this update's section,
+ * lit for a moment; an archived project is read-only, so it has no Edit. "Write an update" opens a new note that
+ * already has this project's section.
  */
 export function ProjectUpdates({ project }: { project: ProjectDetail }) {
   const { t } = useTranslation();
@@ -80,14 +88,27 @@ export function ProjectUpdates({ project }: { project: ProjectDetail }) {
                 {group.items.map((update) => (
                   <li key={`${update.noteId}:${update.position}`} className="update">
                     <div className="update__head">
-                      <Link to={`/notes/${update.noteId}`} state={from} className="update__note">
+                      <Link to={`/notes/${update.noteId}`} state={{ ...from, section: update.position }} className="update__note">
                         {update.noteTitle || t('notes.untitled')}
                       </Link>
-                      <span className="update__date">
-                        {t('notes.updates.dateEdited', {
-                          date: formatDate(update.noteCreatedAt),
-                          when: relativeDate(update.noteUpdatedAt),
-                        })}
+                      <span className="update__side">
+                        <span className="update__date">
+                          {t('notes.updates.dateEdited', {
+                            date: formatDate(update.noteCreatedAt),
+                            when: relativeDate(update.noteUpdatedAt),
+                          })}
+                        </span>
+                        {archived ? null : (
+                          <Link
+                            to={`/notes/${update.noteId}`}
+                            state={{ ...from, section: update.position }}
+                            className="blue-button blue-button--secondary blue-button--sm update__edit"
+                            aria-label={t('notes.updates.editLabel', { title: update.noteTitle || t('notes.untitled') })}
+                          >
+                            <PencilIcon />
+                            {t('notes.updates.edit')}
+                          </Link>
+                        )}
                       </span>
                     </div>
                     <NoteContentView doc={update.content} />

@@ -2,6 +2,9 @@ import type { NoteProject } from '@weekly-meeting/shared';
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useProjects } from '../projects/useProjects';
 
+/** Every active project of mine at once (the server's most): the Projects page shows 12 a page, the editor needs all. */
+const EVERY_PROJECT = 500;
+
 interface NoteProjectsValue {
   /** The note being written (a pasted section's pictures are copied into it). */
   noteId: string | null;
@@ -19,7 +22,7 @@ const NoteProjectsContext = createContext<NoteProjectsValue>({ noteId: null, act
  * active projects. Section views read it through useNoteProjects (they render inside the editor, below this provider).
  */
 export function NoteProjectsProvider({ noteId, tagged, children }: { noteId: string; tagged: NoteProject[]; children: ReactNode }) {
-  const query = useProjects({ status: 'active', sort: 'name' });
+  const query = useProjects({ status: 'active', sort: 'name', limit: EVERY_PROJECT });
   const value = useMemo<NoteProjectsValue>(() => {
     const active = (query.data?.projects ?? []).map(({ id, name, status }) => ({ id, name, status }));
     const byId = new Map<string, NoteProject>([...tagged, ...active].map((p) => [p.id, p]));

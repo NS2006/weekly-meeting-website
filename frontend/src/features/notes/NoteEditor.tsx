@@ -41,6 +41,7 @@ export function NoteEditor({
   note,
   back,
   startWriting = false,
+  openSection,
   onReload,
 }: {
   note: NoteDetail;
@@ -48,6 +49,8 @@ export function NoteEditor({
   back: { to: string; label: string };
   /** Put the caret at the end of the text straight away (a new update from a project page: inside its section). */
   startWriting?: boolean;
+  /** Open at this project section (its order among the note's sections): an update's "Edit" on a project page. */
+  openSection?: number | undefined;
   onReload: () => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -104,7 +107,10 @@ export function NoteEditor({
   }, []);
 
   const uploadImages = useRef<(files: File[]) => Promise<void>>(async () => undefined);
-  const extensions = useMemo(() => noteExtensions(), []);
+  // The note's archived projects: their parts are frozen (read when a change is made, so a reload brings news).
+  const archived = useRef(new Set<string>());
+  archived.current = new Set(note.projects.filter((p) => p.status === 'archived').map((p) => p.id));
+  const extensions = useMemo(() => noteExtensions({ isFrozen: (projectId) => archived.current.has(projectId) }), []);
   const editor = useEditor(
     {
       extensions,
@@ -264,7 +270,7 @@ export function NoteEditor({
         <EditorToolbar editor={editor} status={status} onPickImages={() => fileInput.current?.click()} />
       ) : null}
 
-      {editor ? <EditorProjectNav editor={editor} /> : null}
+      {editor ? <EditorProjectNav editor={editor} openAt={openSection} /> : null}
 
       <article className="note-paper">
         <textarea

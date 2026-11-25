@@ -4,7 +4,6 @@ import {
   fromSharedChoice,
   isFiltered,
   listDateOf,
-  moreFiltersInUse,
   notesQuery,
   readNoteFilters,
   readPage,
@@ -48,18 +47,17 @@ describe("the Notes page's filters in the address", () => {
     for (const bad of ['', '?page=0', '?page=-2', '?page=1.5', '?page=two', '?page=99999']) expect(readPage(address(bad))).toBe(1);
   });
 
-  it('asks the server for one page of 20 with only the filters in use', () => {
+  it('asks the server for one page of 10 with only the filters in use', () => {
     const filters = readNoteFilters(address(`?q=retry&project=${PROJECT}&shared=yes`));
-    expect(notesQuery(filters, 1)).toEqual({ q: 'retry', project: PROJECT, shared: 'yes', sort: 'newest', offset: 0, limit: 20 });
-    expect(notesQuery(readNoteFilters(address('')), 3)).toEqual({ sort: 'newest', offset: 40, limit: 20 });
+    expect(notesQuery(filters, 1)).toEqual({ q: 'retry', project: PROJECT, shared: 'yes', sort: 'newest', offset: 0, limit: 10 });
+    expect(notesQuery(readNoteFilters(address('')), 3)).toEqual({ sort: 'newest', offset: 20, limit: 10 });
   });
 
-  it('counts the filters behind "More filters", and tells when the list is narrowed', () => {
+  it('tells when the list is narrowed', () => {
     const none = readNoteFilters(address(''));
-    expect(moreFiltersInUse(none)).toBe(0);
     expect(isFiltered(none)).toBe(false);
     expect(isFiltered(readNoteFilters(address('?sort=oldest')))).toBe(false); // the order alone narrows nothing
-    expect(moreFiltersInUse(readNoteFilters(address('?from=2026-10-01&sort=edited')))).toBe(2);
+    expect(isFiltered(readNoteFilters(address('?from=2026-10-01&sort=edited')))).toBe(true);
     expect(isFiltered(readNoteFilters(address('?shared=no')))).toBe(true);
   });
 

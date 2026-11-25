@@ -19,11 +19,16 @@ export function NotePage({ user }: { user: Me }) {
   const code = note.error instanceof ApiFailure ? note.error.code : note.error ? 'unknown_error' : null;
   // Opened from a project page, a meeting's board or the Notes page with filters or on a later page: the back link
   // returns there; otherwise to the Notes page.
-  const state = useLocation().state as { from?: unknown; label?: unknown; write?: unknown } | null;
+  const state = useLocation().state as { from?: unknown; label?: unknown; write?: unknown; section?: unknown } | null;
   const back =
     typeof state?.from === 'string' && /^\/(projects\/|meetings\/|notes(\?|$))/.test(state.from) && typeof state.label === 'string'
       ? { to: state.from, label: state.label }
       : { to: '/notes', label: t('notes.page.allNotes') };
+  // An update's "Edit" on a project page: which of the note's sections to open at.
+  const section =
+    typeof state?.section === 'number' && Number.isInteger(state.section) && state.section >= 0 && state.section < 1000
+      ? state.section
+      : undefined;
 
   return (
     <AppLayout user={user}>
@@ -46,6 +51,7 @@ export function NotePage({ user }: { user: Me }) {
           note={note.data.note}
           back={back}
           startWriting={state?.write === true}
+          openSection={section}
           onReload={() => void queryClient.resetQueries({ queryKey: [...NOTES_KEY, 'one', id] })}
         />
       ) : (

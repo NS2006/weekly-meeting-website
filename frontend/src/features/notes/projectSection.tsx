@@ -18,6 +18,7 @@ import { errorLabel } from '../../utils/errorLabels';
 import { useNoteProjects } from './noteProjects';
 import { useDismiss } from '../../hooks/useDismiss';
 import { ProjectMenu } from './ProjectMenu';
+import { frozenGuard } from './frozenSections';
 import { attachmentIdsIn, keepSection, useCopiedSection, withAttachments } from './sectionClipboard';
 import { deleteSection, emptySectionToDelete, isEmptySection, removeProjectBlock } from './sectionCommands';
 
@@ -31,12 +32,23 @@ export const NoteDocument = Node.create({
   content: '(block | projectSection)+',
 });
 
+export interface ProjectSectionOptions {
+  /** Whether a project is archived: its parts are frozen (frozenSections.ts). */
+  isFrozen: (projectId: string) => boolean;
+}
+
 /** A part of the note tagged with one of my projects: what that project's page shows. */
-export const ProjectSection = Node.create({
+export const ProjectSection = Node.create<ProjectSectionOptions>({
   name: 'projectSection',
   content: 'block+',
   defining: true,
   isolating: true,
+  addOptions() {
+    return { isFrozen: () => false };
+  },
+  addProseMirrorPlugins() {
+    return [frozenGuard((projectId) => this.options.isFrozen(projectId))];
+  },
   addAttributes() {
     return {
       projectId: {
@@ -247,6 +259,8 @@ function ProjectSectionView({ node, editor, getPos }: NodeViewProps) {
   const id = typeof node.attrs.projectId === 'string' ? node.attrs.projectId : null;
   const project = id ? find(id) : undefined;
   const label = project ? project.name : id ? t('notes.section.removed') : t('notes.section.choose');
+  // An archived project's part is frozen (owner, 2026-11-25): its tag stays, and it cannot be changed or removed.
+  const frozen = project?.status === 'archived';
   const at = () => {
     const pos = getPos();
     return typeof pos === 'number' ? pos : null;
@@ -286,8 +300,21 @@ function ProjectSectionView({ node, editor, getPos }: NodeViewProps) {
   };
 
   return (
-    <NodeViewWrapper className={`note-section ${project ? '' : 'note-section--untagged'}`.trim()} data-project-section="">
+    <NodeViewWrapper
+      className={`note-section ${project ? '' : 'note-section--untagged'} ${frozen ? 'note-section--frozen' : ''}`.trim()}
+      data-project-section=""
+    >
       <div className="note-section__head" contentEditable={false} ref={head}>
+        {frozen ? (
+          <span className="note-section__chip note-section__chip--frozen" title={t('notes.section.frozenTitle', { project: label })}>
+            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+              <rect x="3" y="7" width="10" height="7" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+            {label}
+            <span className="note-section__archived">{t('notes.section.archivedReadOnly')}</span>
+          </span>
+        ) : (
         <button
           type="button"
           className="note-section__chip"
@@ -300,10 +327,10 @@ function ProjectSectionView({ node, editor, getPos }: NodeViewProps) {
         >
           <span className="note-section__dot" aria-hidden="true" />
           {label}
-          {project?.status === 'archived' ? <span className="note-section__archived">{t('notes.section.archived')}</span> : null}
           <span aria-hidden="true">▾</span>
         </button>
-        {open ? (
+        )}
+        {open && !frozen ? (
           <ProjectMenu
             className="note-section__menu"
             current={id}
@@ -365,6 +392,7 @@ function ProjectSectionView({ node, editor, getPos }: NodeViewProps) {
             }
           />
         ) : null}
+        {frozen ? null : (
         <button
           type="button"
           className="note-section__remove"
@@ -386,6 +414,7 @@ function ProjectSectionView({ node, editor, getPos }: NodeViewProps) {
             <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
           </svg>
         </button>
+        )}
       </div>
       {pasting || notice ? (
         <p
