@@ -158,7 +158,15 @@
 .blue-modal--md { max-width: 640px; }
 .blue-modal--lg { max-width: 960px; }
 .blue-modal--xl { max-width: 1200px; }
-.blue-modal__title { font-size: var(--blue-font-size-lg); font-weight: var(--blue-font-weight-bold); }
+.blue-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--blue-space-3);
+  padding: var(--blue-space-4) var(--blue-space-6);
+  border-bottom: 1px solid var(--blue-color-border-default);
+}
+.blue-modal__title { min-width: 0; font-size: var(--blue-font-size-lg); font-weight: var(--blue-font-weight-bold); }
 .blue-modal__close {
   border: none;
   background: transparent;
@@ -343,6 +351,7 @@
 }
 .blue-modal__close {
   display: grid;
+  flex: none;
   place-items: center;
   width: 32px;
   height: 32px;
