@@ -23,9 +23,21 @@ export const ProjectsQuerySchema = z
       .optional()
       .transform((value) => (value ? value : undefined)),
     status: status.default('active'),
-    sort: z.enum(['updated', 'name', 'newest']).default('updated'),
+    activity: z.enum(['week', 'month', 'quarter', 'quiet', 'none']).optional(),
+    shared: z.enum(['yes', 'no']).optional(),
+    team: id.optional(),
+    sort: z.enum(['updated', 'stale', 'updates', 'name', 'newest', 'oldest']).default('updated'),
+    offset: z.coerce.number().int().min(0).max(100_000).default(0),
+    // Up to 500: the editor's Project menu asks for every active project at once (a person has tens, a few hundred at most).
+    limit: z.coerce.number().int().min(1).max(500).default(12),
   })
   .strict();
+
+/** Projects a page when the request does not say (owner, 2026-11-25: four rows of three cards). */
+export const PROJECTS_PAGE = 12;
+
+/** "Last update" filter: how many days back each choice reaches; `quiet` is older than the longest. */
+export const ACTIVITY_DAYS = { week: 7, month: 30, quarter: 90 } as const;
 
 export const ProjectChoicesQuerySchema = z
   .object({

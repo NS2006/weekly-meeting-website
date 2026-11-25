@@ -62,7 +62,7 @@ export function createApp(deps: AppDeps): Express {
   api.use(authenticate({ sessions, users }), requireActive);
   api.use(createUsersRoutes({ db: deps.db, config: deps.auth, logger: deps.logger }));
   api.use(createTeamsRoutes(createTeamsService({ db: deps.db, logger: deps.logger })));
-  api.use(createProjectsRoutes(createProjectsService({ db, logger })));
+  api.use(createProjectsRoutes(createProjectsService({ db, logger, now: deps.now })));
   api.use(createNotesRoutes(createNotesService({ db, logger, storage })));
   api.use(createAttachmentsRoutes(createAttachmentsService({ db, logger, storage })));
   api.use(createMeetingsRoutes(createMeetingsService({ db: deps.db, logger: deps.logger, now: deps.now })));

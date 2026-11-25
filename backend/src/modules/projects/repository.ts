@@ -1,4 +1,4 @@
-import type { ProjectChoice, ProjectSort, ProjectStatus } from '@weekly-meeting/shared';
+import type { ProjectActivity, ProjectChoice, ProjectSort, ProjectStatus } from '@weekly-meeting/shared';
 import type { Db } from '../../database/pool.ts';
 import { likePattern } from '../../utils/sql.ts';
 
@@ -13,15 +13,30 @@ export interface ProjectRow {
   lastUpdateAt: Date | null;
 }
 
+/** What narrows the list, except the status. `since`: the cutoff for the "Last update" choice, worked out by the service. */
+export interface ProjectFilters {
+  q?: string | undefined;
+  activity?: ProjectActivity | undefined;
+  since?: Date | undefined;
+  shared?: 'yes' | 'no' | undefined;
+  team?: string | undefined;
+}
+
 export interface ProjectsRepository {
-  /** The owner's projects in one status, narrowed by text in the name or description. */
-  list(ownerId: string, filters: { status: ProjectStatus; q?: string; sort: ProjectSort }): Promise<ProjectRow[]>;
+  /** One page of the owner's projects in one status, narrowed by the filters; `limit` + 1 rows tell if more follow. */
+  list(
+    ownerId: string,
+    status: ProjectStatus,
+    filters: ProjectFilters,
+    sort: ProjectSort,
+    page: { offset: number; limit: number },
+  ): Promise<ProjectRow[]>;
   /** A few of the owner's projects (any status) at random. */
   randomChoices(ownerId: string, limit: number): Promise<ProjectChoice[]>;
   /** The owner's projects whose name holds the text, active first, then A–Z; `limit` rows at most. */
   findChoices(ownerId: string, q: string, limit: number): Promise<ProjectChoice[]>;
-  /** How many of the owner's projects match the text, per status. */
-  counts(ownerId: string, q?: string): Promise<Record<ProjectStatus, number>>;
+  /** How many of the owner's projects match the filters, per status. */
+  counts(ownerId: string, filters: ProjectFilters): Promise<Record<ProjectStatus, number>>;
   /** The project if this user owns it; null otherwise (missing and not-yours look the same). */
   findOwned(projectId: string, ownerId: string): Promise<ProjectRow | null>;
   /** Same, and locks the row until the transaction ends. */
@@ -44,21 +59,61 @@ const PROJECT_SELECT = `
 
 // Sort orders come from this fixed list only (never from the request text).
 const PROJECT_ORDER: Record<ProjectSort, string> = {
-  // Recently touched first: the project itself or its latest note, whichever is later.
+  // Recently touched first: the project itself or its latest note, whichever is later (GREATEST skips a NULL).
   updated: `GREATEST(p.updated_at, ${LAST_UPDATE}) DESC, p.id DESC`,
+  // The ones left alone longest first: what may need a word at the next meeting.
+  stale: `GREATEST(p.updated_at, ${LAST_UPDATE}) ASC, p.id`,
+  updates: '"updateCount" DESC, lower(p.name), p.id',
   name: 'lower(p.name), p.id',
   newest: 'p.created_at DESC, p.id DESC',
+  oldest: 'p.created_at ASC, p.id',
 };
+
+/** An update of the project shared on a meeting (of one team, when `team` is that team's parameter). */
+const sharedUpdate = (team?: string) =>
+  team
+    ? `EXISTS (SELECT 1 FROM note_sections s
+                 JOIN note_meetings nm ON nm.note_id = s.note_id
+                 JOIN meetings m ON m.id = nm.meeting_id
+                 JOIN meeting_series ms ON ms.id = m.series_id
+                WHERE s.project_id = p.id AND ms.team_id = ${team})`
+    : 'EXISTS (SELECT 1 FROM note_sections s JOIN note_meetings nm ON nm.note_id = s.note_id WHERE s.project_id = p.id)';
+
+/**
+ * The WHERE clause for the owner's projects and the filters (not the status), every value a parameter. `$1` is
+ * always the owner.
+ */
+function whereOf(ownerId: string, f: ProjectFilters): { sql: string; values: unknown[] } {
+  const values: unknown[] = [ownerId];
+  const param = (value: unknown) => {
+    values.push(value);
+    return `$${values.length}`;
+  };
+  const parts = ['p.user_id = $1'];
+  if (f.q) {
+    const q = param(likePattern(f.q));
+    parts.push(`(p.name ILIKE ${q} OR p.description ILIKE ${q})`);
+  }
+  if (f.activity === 'none') parts.push('NOT EXISTS (SELECT 1 FROM note_sections s WHERE s.project_id = p.id)');
+  else if (f.activity === 'quiet' && f.since) parts.push(`${LAST_UPDATE} < ${param(f.since)}`);
+  else if (f.activity && f.since) parts.push(`${LAST_UPDATE} >= ${param(f.since)}`);
+  if (f.shared === 'yes') parts.push(sharedUpdate());
+  if (f.shared === 'no') parts.push(`NOT ${sharedUpdate()}`);
+  if (f.team) parts.push(sharedUpdate(param(f.team)));
+  return { sql: parts.join(' AND '), values };
+}
 
 export function createProjectsRepository(db: Db): ProjectsRepository {
   return {
-    async list(ownerId, filters) {
+    async list(ownerId, status, filters, sort, page) {
+      const where = whereOf(ownerId, filters);
+      const at = (i: number) => `$${where.values.length + i}`;
       const { rows } = await db.query<ProjectRow>(
         `${PROJECT_SELECT}
-          WHERE p.user_id = $1 AND p.status = $2::project_status
-            AND ($3::text IS NULL OR p.name ILIKE $3 OR p.description ILIKE $3)
-          ORDER BY ${PROJECT_ORDER[filters.sort]}`,
-        [ownerId, filters.status, filters.q ? likePattern(filters.q) : null],
+          WHERE ${where.sql} AND p.status = ${at(1)}::project_status
+          ORDER BY ${PROJECT_ORDER[sort]}
+          LIMIT ${at(2)} OFFSET ${at(3)}`,
+        [...where.values, status, page.limit + 1, page.offset],
       );
       return rows;
     },
@@ -83,12 +138,11 @@ export function createProjectsRepository(db: Db): ProjectsRepository {
       return rows;
     },
 
-    async counts(ownerId, q) {
+    async counts(ownerId, filters) {
+      const where = whereOf(ownerId, filters);
       const { rows } = await db.query<{ status: ProjectStatus; n: number }>(
-        `SELECT p.status, count(*)::int AS n FROM projects p
-          WHERE p.user_id = $1 AND ($2::text IS NULL OR p.name ILIKE $2 OR p.description ILIKE $2)
-          GROUP BY p.status`,
-        [ownerId, q ? likePattern(q) : null],
+        `SELECT p.status, count(*)::int AS n FROM projects p WHERE ${where.sql} GROUP BY p.status`,
+        where.values,
       );
       const counts: Record<ProjectStatus, number> = { active: 0, archived: 0 };
       for (const row of rows) counts[row.status] = row.n;

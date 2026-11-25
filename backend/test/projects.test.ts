@@ -25,7 +25,9 @@ describeDb('projects (integration)', () => {
   const pool = createPool({ connectionString: url ?? '', max: 4 }, silentLogger);
   const db = withTransactions(pool);
   const DOMAIN = '@projects.example.test';
+  const TEAM = 'Projects Filter Test Team';
   const cleanup = async () => {
+    await pool.query('DELETE FROM teams WHERE name = $1', [TEAM]);
     await pool.query('DELETE FROM notes WHERE user_id IN (SELECT id FROM users WHERE email LIKE $1)', [`%${DOMAIN}`]);
     await pool.query('DELETE FROM projects WHERE user_id IN (SELECT id FROM users WHERE email LIKE $1)', [`%${DOMAIN}`]);
     await pool.query('DELETE FROM users WHERE email LIKE $1', [`%${DOMAIN}`]);
@@ -69,7 +71,20 @@ describeDb('projects (integration)', () => {
     (await (await call(who, 'GET', `/projects${query}`)).json()) as {
       projects: Project[];
       counts: { active: number; archived: number };
+      total: number;
+      hasMore: boolean;
     };
+  /** A note of the owner with one written section for the project; returns the note's id. */
+  async function writeUpdate(who: Person, projectId: string): Promise<string> {
+    const created = await call(who, 'POST', '/notes', { projectId });
+    const { note } = (await created.json()) as { note: { id: string } };
+    const content = {
+      type: 'doc',
+      content: [{ type: 'projectSection', attrs: { projectId }, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Progress.' }] }] }],
+    };
+    expect((await call(who, 'PATCH', `/notes/${note.id}`, { content, version: 1 })).status).toBe(200);
+    return note.id;
+  }
 
   it('creates a project for its owner only, with a name unique per person (ignoring case)', async () => {
     const ana = await person('Ana Owner');
@@ -130,6 +145,73 @@ describeDb('projects (integration)', () => {
     expect((await list(owner, '?q=analytics')).counts).toEqual({ active: 1, archived: 0 });
 
     for (const bad of ['?status=deleted', '?sort=size', '?extra=1']) {
+      expect(await code(await call(owner, 'GET', `/projects${bad}`))).toBe('validation_failed');
+    }
+  });
+
+  it('pages, and filters by last update and where the updates are shared (owner, 2026-11-25)', async () => {
+    const owner = await person('Hana Pages');
+    const fresh = await create(owner, 'Fresh');
+    const month = await create(owner, 'Last month');
+    const quiet = await create(owner, 'Quiet');
+    const none = await create(owner, 'Never written');
+    const freshNote = await writeUpdate(owner, fresh.id);
+    await writeUpdate(owner, fresh.id);
+    const monthNote = await writeUpdate(owner, month.id);
+    const quietNote = await writeUpdate(owner, quiet.id);
+    // Days back from now: the projects themselves were last changed 200 days ago, their notes 3, 40 and 100.
+    const ago = (days: number) => new Date(Date.now() - days * 86_400_000);
+    await pool.query('UPDATE projects SET updated_at = $2 WHERE user_id = $1', [owner.id, ago(200)]);
+    await pool.query('UPDATE notes SET updated_at = $2 WHERE user_id = $1 AND id <> ALL($3::uuid[])', [owner.id, ago(3), [monthNote, quietNote]]);
+    await pool.query('UPDATE notes SET updated_at = $2 WHERE id = $1', [monthNote, ago(40)]);
+    await pool.query('UPDATE notes SET updated_at = $2 WHERE id = $1', [quietNote, ago(100)]);
+    // The fresh project's first note is shared on a meeting of a team.
+    const team = (await pool.query<{ id: string }>('INSERT INTO teams (name) VALUES ($1) RETURNING id', [TEAM])).rows[0]!.id;
+    const series = (
+      await pool.query<{ id: string }>("INSERT INTO meeting_series (team_id, name, days_of_week) VALUES ($1, 'Weekly', ARRAY[4]::smallint[]) RETURNING id", [team])
+    ).rows[0]!.id;
+    const meeting = (
+      await pool.query<{ id: string }>("INSERT INTO meetings (series_id, scheduled_date, meeting_date) VALUES ($1, '2026-11-26', '2026-11-26') RETURNING id", [series])
+    ).rows[0]!.id;
+    await pool.query('INSERT INTO note_meetings (note_id, meeting_id) VALUES ($1, $2)', [freshNote, meeting]);
+    const names = async (query: string) => (await list(owner, query)).projects.map((p) => p.name);
+
+    // Pages: `limit` a page, the total on each, and whether more follow.
+    const first = await list(owner, '?limit=3');
+    expect(first).toMatchObject({ total: 4, hasMore: true, counts: { active: 4, archived: 0 } });
+    expect(first.projects.map((p) => p.name)).toEqual(['Fresh', 'Last month', 'Quiet']);
+    const second = await list(owner, '?limit=3&offset=3');
+    expect(second).toMatchObject({ total: 4, hasMore: false });
+    expect(second.projects.map((p) => p.name)).toEqual(['Never written']);
+
+    // Last update: in the past 7, 30 or 90 days, longer ago, or never; the tab counts follow the filters.
+    expect(await names('?activity=week')).toEqual(['Fresh']);
+    expect(await names('?activity=month')).toEqual(['Fresh']);
+    expect(await names('?activity=quarter')).toEqual(['Fresh', 'Last month']);
+    expect(await names('?activity=quiet')).toEqual(['Quiet']);
+    expect(await names('?activity=none')).toEqual(['Never written']);
+    expect((await list(owner, '?activity=none')).counts).toEqual({ active: 1, archived: 0 });
+
+    // Shared: on any meeting, on none, or on that team's meetings.
+    expect(await names('?shared=yes')).toEqual(['Fresh']);
+    expect(await names('?shared=no')).toEqual(['Last month', 'Quiet', 'Never written']);
+    expect(await names(`?team=${team}`)).toEqual(['Fresh']);
+    expect(await names(`?team=${randomUUID()}`)).toEqual([]);
+    expect(await names(`?team=${team}&activity=quiet`)).toEqual([]);
+
+    // Orders: left alone longest, most updates, oldest.
+    expect(await names('?sort=stale')).toEqual(['Never written', 'Quiet', 'Last month', 'Fresh']);
+    expect((await list(owner, '?sort=updates')).projects.map((p) => [p.name, p.updateCount])).toEqual([
+      ['Fresh', 2],
+      ['Last month', 1],
+      ['Quiet', 1],
+      ['Never written', 0],
+    ]);
+    expect(await names('?sort=oldest')).toEqual(['Fresh', 'Last month', 'Quiet', 'Never written']);
+    expect(none.status).toBe('active');
+
+    expect((await list(owner, '?limit=500')).projects).toHaveLength(4); // the editor's Project menu: every active project
+    for (const bad of ['?limit=0', '?limit=501', '?offset=-1', '?activity=year', '?shared=maybe', '?team=12']) {
       expect(await code(await call(owner, 'GET', `/projects${bad}`))).toBe('validation_failed');
     }
   });

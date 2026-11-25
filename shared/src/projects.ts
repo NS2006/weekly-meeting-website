@@ -1,7 +1,17 @@
 /** `archived`: hidden from the main list and read-only until restored. */
 export type ProjectStatus = 'active' | 'archived';
 
-export type ProjectSort = 'updated' | 'name' | 'newest';
+/**
+ * Recently updated first (default), least recently updated first, most updates first, name A–Z, newest or oldest
+ * first.
+ */
+export type ProjectSort = 'updated' | 'stale' | 'updates' | 'name' | 'newest' | 'oldest';
+
+/**
+ * When the project's updates were last written (owner, 2026-11-25): in the past 7, 30 or 90 days, more than 90 days
+ * ago (`quiet`), or never (`none`).
+ */
+export type ProjectActivity = 'week' | 'month' | 'quarter' | 'quiet' | 'none';
 
 /** A project as its owner sees it. Only the owner ever does (others get 404). */
 export interface ProjectSummary {
@@ -20,20 +30,32 @@ export interface ProjectSummary {
 
 export type ProjectDetail = ProjectSummary;
 
-/** GET /api/projects filters, all optional. */
+/** GET /api/projects: my projects, filtered, sorted and paged on the server. Every field is optional. */
 export interface ProjectsQuery {
   /** Text in the name or description. */
   q?: string;
   /** Active (default) or archived projects. */
   status?: ProjectStatus;
-  /** Recently updated first (default), name A–Z, or newest first. */
+  /** When its updates were last written. */
+  activity?: ProjectActivity;
+  /** `yes`: an update of it is shared on at least one meeting; `no`: none is. */
+  shared?: 'yes' | 'no';
+  /** Only projects with an update shared on a meeting of this team. */
+  team?: string;
   sort?: ProjectSort;
+  offset?: number;
+  /** Projects per page, 1–500 (12 when not given; the editor's Project menu asks for all its active ones). */
+  limit?: number;
 }
 
 export interface ProjectsResponse {
   projects: ProjectSummary[];
-  /** How many projects match the text search in each status (for the tab labels). */
+  /** How many projects match every filter but the status, in each status (for the tab labels). */
   counts: Record<ProjectStatus, number>;
+  /** How many match in the status asked for, on every page. */
+  total: number;
+  /** More projects after this page. */
+  hasMore: boolean;
 }
 
 export interface ProjectResponse {

@@ -12,7 +12,7 @@ import { AppError } from '../../utils/errors.ts';
 import type { Logger } from '../../utils/logger.ts';
 import type { AuthContext } from '../auth/types.ts';
 import { createProjectsRepository, type ProjectRow } from './repository.ts';
-import { FOUND_CHOICES, NAME_INDEX, RANDOM_CHOICES } from './types.ts';
+import { ACTIVITY_DAYS, FOUND_CHOICES, NAME_INDEX, PROJECTS_PAGE, RANDOM_CHOICES } from './types.ts';
 
 export interface ProjectsService {
   list(actor: AuthContext, filters: ProjectsQuery): Promise<ProjectsResponse>;
@@ -38,8 +38,9 @@ function nameTaken(err: unknown): boolean {
 }
 
 /** Projects belong to one person: every read and change checks ownership; anyone else gets 404. */
-export function createProjectsService(deps: { db: Database; logger: Logger }): ProjectsService {
+export function createProjectsService(deps: { db: Database; logger: Logger; now?: () => Date }): ProjectsService {
   const { db, logger } = deps;
+  const now = () => deps.now?.() ?? new Date();
   const projects = createProjectsRepository(db);
 
   async function detail(projectId: string, ownerId: string): Promise<ProjectDetail> {
@@ -49,13 +50,28 @@ export function createProjectsService(deps: { db: Database; logger: Logger }): P
   }
 
   return {
-    async list(actor, filters) {
-      const status = filters.status ?? 'active';
+    async list(actor, query) {
+      const status = query.status ?? 'active';
+      const page = { offset: query.offset ?? 0, limit: query.limit ?? PROJECTS_PAGE };
+      // "Last update": the past 7, 30 or 90 days; "quiet" is before the 90 days, "none" needs no date.
+      const days = query.activity === 'quiet' ? ACTIVITY_DAYS.quarter : query.activity && query.activity !== 'none' ? ACTIVITY_DAYS[query.activity] : 0;
+      const filters = {
+        q: query.q,
+        activity: query.activity,
+        since: days ? new Date(now().getTime() - days * 86_400_000) : undefined,
+        shared: query.shared,
+        team: query.team,
+      };
       const [rows, counts] = await Promise.all([
-        projects.list(actor.user.id, { status, q: filters.q, sort: filters.sort ?? 'updated' }),
-        projects.counts(actor.user.id, filters.q),
+        projects.list(actor.user.id, status, filters, query.sort ?? 'updated', page),
+        projects.counts(actor.user.id, filters),
       ]);
-      return { projects: rows.map(toSummary), counts };
+      return {
+        projects: rows.slice(0, page.limit).map(toSummary),
+        counts,
+        total: counts[status],
+        hasMore: rows.length > page.limit,
+      };
     },
 
     get: (actor, projectId) => detail(projectId, actor.user.id),
