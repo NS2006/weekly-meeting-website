@@ -3,6 +3,7 @@ import type { TeamSummary } from '@weekly-meeting/shared';
 import { Link } from 'react-router';
 import { BlueAvatar, BlueBadge, BlueSkeleton, initials } from '../../components/blue';
 import { EntityName } from '../../components/EntityName';
+import { StarButton } from './StarButton';
 
 /** The team's initials on a tile: brand gradient for teams I lead, a light brand tint otherwise. */
 export function TeamMonogram({ name, mine, size = 'md' }: { name: string; mine: boolean; size?: 'md' | 'lg' }) {
@@ -14,16 +15,25 @@ export function TeamMonogram({ name, mine, size = 'md' }: { name: string; mine: 
   );
 }
 
+/**
+ * A team on the Teams page. The whole card opens the team (its name is the link, stretched over the card); the star
+ * at the top keeps it first (owner, 2026-11-25) without opening it.
+ */
 export function TeamCard({ team }: { team: TeamSummary }) {
   const { t } = useTranslation();
   const leads = team.myRole === 'leader';
   return (
-    <Link to={`/teams/${team.id}`} className="tile tile--link team-card">
+    <div className="tile tile--link team-card">
       <span className="team-card__top">
         <TeamMonogram name={team.name} mine={leads} />
-        {leads ? <BlueBadge variant="info">{t('teams.card.leader')}</BlueBadge> : null}
+        <span className="team-card__marks">
+          {leads ? <BlueBadge variant="info">{t('teams.card.leader')}</BlueBadge> : null}
+          <StarButton team={team} />
+        </span>
       </span>
-      <span className="team-card__name">{team.name}</span>
+      <Link to={`/teams/${team.id}`} className="team-card__name team-card__link">
+        {team.name}
+      </Link>
       {team.description ? <span className="muted team-card__description">{team.description}</span> : null}
       <span className="tile__foot team-card__foot muted small">
         {!leads && team.leader ? <BlueAvatar name={team.leader.name} size="sm" /> : null}
@@ -44,7 +54,7 @@ export function TeamCard({ team }: { team: TeamSummary }) {
           →
         </span>
       </span>
-    </Link>
+    </div>
   );
 }
 

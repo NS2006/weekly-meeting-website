@@ -9,6 +9,7 @@ import { TeamMeetingsPanel } from '../features/meetings/TeamMeetingsPanel';
 import { AddMemberDialog } from '../features/teams/AddMemberDialog';
 import { DeleteTeamDialog } from '../features/teams/DeleteTeamDialog';
 import { MembersTable } from '../features/teams/MembersTable';
+import { StarButton } from '../features/teams/StarButton';
 import { TeamMonogram, TeamPageSkeleton } from '../features/teams/TeamCard';
 import { TeamFormDialog } from '../features/teams/TeamFormDialog';
 import {
@@ -97,7 +98,10 @@ function TeamView({ team, me }: { team: TeamDetail; me: Me }) {
         <div className="team-head">
           <TeamMonogram name={team.name} mine={isLeader} size="lg" />
           <div className="team-head__text">
-            <h1 className="page-head__title">{team.name}</h1>
+            <div className="team-head__title">
+              <h1 className="page-head__title">{team.name}</h1>
+              {team.archivedAt ? null : <StarButton team={team} />}
+            </div>
             <span className="team-head__meta muted small">
               {t('teams.memberCount', { count: team.memberCount })}
               {isLeader ? <BlueBadge variant="info">{t('teams.team.youLead')}</BlueBadge> : null}

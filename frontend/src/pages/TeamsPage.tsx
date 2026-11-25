@@ -4,13 +4,13 @@ import type { Me, TeamRole, TeamSort, TeamsQuery } from '@weekly-meeting/shared'
 import { useNavigate } from 'react-router';
 import { BlueAlert, BlueButton, BlueCard, BlueEmptyState } from '../components/blue';
 import { TeamsIcon } from '../components/icons';
+import { DeletedTeams } from '../features/teams/DeletedTeams';
 import { NewTeamTile, TeamCard, TeamCardSkeleton } from '../features/teams/TeamCard';
 import { TeamFilters } from '../features/teams/TeamFilters';
 import { TeamFormDialog } from '../features/teams/TeamFormDialog';
-import { useCreateTeam, useRestoreTeam, useTeams } from '../features/teams/useTeams';
+import { useCreateTeam, useTeams } from '../features/teams/useTeams';
 import { AppLayout } from '../layouts/AppLayout';
 import { ApiFailure } from '../services/api';
-import { daysUntil, formatDate } from '../utils/dates';
 import { errorLabel } from '../utils/errorLabels';
 import { useFilterParams } from '../utils/useFilterParams';
 import '../features/teams/teams.css';
@@ -34,12 +34,10 @@ export function TeamsPage({ user }: { user: Me }) {
 
   const teams = useTeams(filters);
   const createTeam = useCreateTeam();
-  const restoreTeam = useRestoreTeam();
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
 
   const loadError = teams.error instanceof ApiFailure ? teams.error.code : teams.error ? 'unknown_error' : null;
-  const restoreError = restoreTeam.error instanceof ApiFailure ? restoreTeam.error.code : null;
   const list = teams.data?.teams ?? [];
   const archived = teams.data?.archived ?? [];
   const startCreating = () => {
@@ -134,43 +132,7 @@ export function TeamsPage({ user }: { user: Me }) {
           </div>
         )}
 
-        {archived.length > 0 ? (
-          <BlueCard title={t('teams.list.deletedTitle')}>
-            <div className="stack">
-              <p className="muted">{t('teams.list.deletedLead')}</p>
-              {restoreError ? <BlueAlert variant="error">{errorLabel(restoreError)}</BlueAlert> : null}
-              <ul className="deleted-list">
-                {archived.map((team) => {
-                  const left = team.purgeAt ? daysUntil(team.purgeAt) : 0;
-                  const restoring = restoreTeam.isPending && restoreTeam.variables === team.id;
-                  return (
-                    <li key={team.id}>
-                      <span>
-                        <strong>{team.name}</strong>
-                        <span className="muted small" style={{ display: 'block' }}>
-                          {t('teams.list.deletedWhen', {
-                            deleted: formatDate(team.archivedAt),
-                            purge: formatDate(team.purgeAt),
-                            count: left,
-                          })}
-                        </span>
-                      </span>
-                      <BlueButton
-                        variant="secondary"
-                        size="sm"
-                        loading={restoring}
-                        disabled={restoreTeam.isPending && !restoring}
-                        onClick={() => restoreTeam.mutate(team.id)}
-                      >
-                        {t('teams.list.restore')}
-                      </BlueButton>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          </BlueCard>
-        ) : null}
+        {archived.length > 0 ? <DeletedTeams teams={archived} /> : null}
       </div>
 
       <TeamFormDialog

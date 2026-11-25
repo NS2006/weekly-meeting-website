@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreateTeamRequest, TeamsQuery, UpdateTeamRequest } from '@weekly-meeting/shared';
+import type { CreateTeamRequest, TeamResponse, TeamsQuery, TeamsResponse, TeamSummary, UpdateTeamRequest } from '@weekly-meeting/shared';
 import { api } from '../../services/api';
 
 const TEAMS_KEY = ['teams'] as const;
@@ -80,6 +80,58 @@ export const useCreateTeam = () => useTeamMutation((body: CreateTeamRequest) => 
 export const useUpdateTeam = (id: string) => useTeamMutation((body: UpdateTeamRequest) => api.updateTeam(id, body));
 export const useDeleteTeam = (id: string) => useTeamMutation((confirmName: string) => api.deleteTeam(id, confirmName));
 export const useRestoreTeam = () => useTeamMutation((id: string) => api.restoreTeam(id));
+
+export type DeletedTeamsAction = 'restore' | 'forever';
+
+/**
+ * The Deleted teams bar: restores the picked teams, or deletes them for good, one after the other. `onEach` counts each
+ * team as soon as it is done, so a failure part-way still says what was done; the lists (and the meetings a restore
+ * brings back) refresh once at the end.
+ */
+export function useDeletedTeamsAction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ids, action, onEach }: { ids: readonly string[]; action: DeletedTeamsAction; onEach?: (id: string) => void }) => {
+      for (const id of ids) {
+        if (action === 'restore') await api.restoreTeam(id);
+        else await api.deleteTeamForever(id);
+        onEach?.(id);
+      }
+    },
+    onSettled: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: TEAMS_KEY }),
+        queryClient.invalidateQueries({ queryKey: ['meetings'] }),
+      ]),
+  });
+}
 export const useAddMember = (id: string) => useTeamMutation((userId: string) => api.addTeamMember(id, userId));
 export const useRemoveMember = (id: string) => useTeamMutation((userId: string) => api.removeTeamMember(id, userId));
 export const useSetLeader = (id: string) => useTeamMutation((userId: string) => api.setTeamLeader(id, userId));
+
+/**
+ * Stars a team or takes its star off. The star shows at once (lists and the team page); the lists are then loaded
+ * again, so a starred team moves first. If saving fails, the star goes back.
+ */
+export function useStarTeam() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, starred }: { id: string; starred: boolean }) => (starred ? api.starTeam(id) : api.unstarTeam(id)),
+    onMutate: async ({ id, starred }) => {
+      await queryClient.cancelQueries({ queryKey: TEAMS_KEY });
+      const lists = queryClient.getQueriesData<TeamsResponse>({ queryKey: [...TEAMS_KEY, 'list'] });
+      const detail = queryClient.getQueryData<TeamResponse>([...TEAMS_KEY, id]);
+      const mark = (team: TeamSummary) => (team.id === id ? { ...team, starred } : team);
+      for (const [key, data] of lists) {
+        if (data) queryClient.setQueryData<TeamsResponse>(key, { teams: data.teams.map(mark), archived: data.archived.map(mark) });
+      }
+      if (detail) queryClient.setQueryData<TeamResponse>([...TEAMS_KEY, id], { team: { ...detail.team, starred } });
+      return { lists, detail };
+    },
+    onError: (_error, { id }, context) => {
+      for (const [key, data] of context?.lists ?? []) queryClient.setQueryData(key, data);
+      if (context?.detail) queryClient.setQueryData([...TEAMS_KEY, id], context.detail);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: TEAMS_KEY }),
+  });
+}
