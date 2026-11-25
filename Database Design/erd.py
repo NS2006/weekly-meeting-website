@@ -85,6 +85,7 @@ SCHEMA = [
         Col("role", "varchar", 20),  # leader | member; exactly one leader per team (partial unique index)
         Col("added_at", "timestamp"),
         Col("added_by", "char", 36, nullable=True),  # users.id (line not drawn)
+        Col("starred_at", "timestamp", nullable=True),  # this member starred the team: it comes first in their lists
     ]),
     Table("teams", 870, 40, 200, [
         Col("id", "char", 36, pk=True),
