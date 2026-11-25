@@ -326,6 +326,26 @@ export function limitProjects(doc: EditorDoc, allowed: ReadonlySet<string>): Edi
   };
 }
 
+/**
+ * The same document without the project sections tagged with one of `projects` (a copy leaves archived projects'
+ * parts out, owner 2026-11-25); one empty paragraph when nothing is left, as a document needs a block.
+ */
+export function withoutSections(doc: EditorDoc, projects: ReadonlySet<string>): EditorDoc {
+  const content = (doc.content ?? []).filter((n) => {
+    const id = n.attrs?.projectId;
+    return !(n.type === 'projectSection' && typeof id === 'string' && projects.has(id));
+  });
+  return { ...doc, content: content.length > 0 ? content : [{ type: 'paragraph' }] };
+}
+
+/**
+ * What makes a section the same update when its project is archived (frozen, owner 2026-11-25): its text and its
+ * pictures. Not its exact JSON: the editor may write unchanged formatting differently (default attributes).
+ */
+export function sectionPrint(content: EditorNode): string {
+  return `${plainText(content)}\u0000${[...attachmentIdsIn(content)].sort().join(',')}`;
+}
+
 /** The attachment ids of the document's images (our own `/api/attachments/<id>` sources), each once. */
 export function attachmentIdsIn(doc: EditorNode): Set<string> {
   const ids = new Set<string>();

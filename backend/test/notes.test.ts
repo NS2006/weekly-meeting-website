@@ -193,6 +193,19 @@ describeDb('notes, project sections and images (integration)', () => {
     expect(after.projects.map((p) => p.name)).toEqual(['Old work', 'Mine']); // archived keeps its section
     expect((await updates(other, theirs)).updates).toEqual([]);
 
+    // Its part is frozen (owner, 2026-11-25): it may move, but not change, lose its tag or go.
+    const frozen = section(old, para('Kept.'));
+    for (const content of [
+      doc(section(mine, para('Fine.')), section(old, para('Kept, edited.'))), // its text changed
+      doc(section(mine, para('Fine.')), section(mine, para('Kept.'))), // moved to another project
+      doc(section(mine, para('Fine.')), { type: 'projectSection', content: [para('Kept.')] }), // untagged
+      doc(section(mine, para('Fine.'))), // removed
+    ]) {
+      expect(await code(await save(owner, note.id, { version: 3, content }))).toBe('project_archived');
+    }
+    expect((await save(owner, note.id, { version: 3, content: doc(section(mine, para('Fine, more.')), frozen) })).status).toBe(200);
+    expect((await updates(owner, old)).updates.map((u) => u.content)).toEqual([doc(para('Kept.'))]);
+
     // A new section for the archived project in another note is not tagged.
     const second = await newNote(owner);
     await save(owner, second.id, { version: 1, content: doc(section(old, para('New for old.'))) });
@@ -380,9 +393,10 @@ describeDb('notes, project sections and images (integration)', () => {
     const copy = ((await res.json()) as { note: Note & { meetings: unknown[] } }).note;
     expect(copy.id).not.toBe(note.id);
     expect(copy).toMatchObject({ title: 'Copy of Week 47', version: 1, meetings: [], projects: [{ id: kept, name: 'Kept', status: 'active' }] });
-    // The archived project gets no new part: its text is copied untagged.
-    expect(copy.content.content?.map((n) => n.attrs?.projectId ?? null)).toEqual([kept, null, null]);
-    const src = copy.content.content?.[2]?.attrs?.src as string;
+    // The archived project's part is left out of the copy (owner, 2026-11-25; it used to come across untagged).
+    expect(copy.content.content?.map((n) => n.attrs?.projectId ?? null)).toEqual([kept, null]);
+    expect(JSON.stringify(copy.content)).not.toContain('Old work');
+    const src = copy.content.content?.[1]?.attrs?.src as string;
     expect(src).toMatch(/^\/api\/attachments\/[0-9a-f-]{36}$/);
     expect(src).not.toBe(attachment.url);
     expect(await files()).toBe(before + 1);

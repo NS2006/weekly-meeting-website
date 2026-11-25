@@ -26,7 +26,9 @@ import {
   plainText,
   projectSections,
   sectionDoc,
+  sectionPrint,
   withAttachments,
+  withoutSections,
 } from './content.ts';
 import {
   createNotesRepository,
@@ -110,6 +112,32 @@ export function createNotesService(deps: { db: Database; logger: Logger; storage
    */
   const updatesIn = (doc: EditorDoc) => projectSections(doc).filter((s) => s.projectId !== null && hasContent(s.content));
 
+  /** The owner's archived projects among `ids`. */
+  async function archivedAmong(repo: NotesRepository, ownerId: string, ids: string[]): Promise<Set<string>> {
+    const owned = await repo.ownedProjects(ownerId, [...new Set(ids)]);
+    return new Set(owned.filter((p) => p.status === 'archived').map((p) => p.id));
+  }
+
+  /**
+   * An archived project's parts are frozen (owner, 2026-11-25: archived means done; its updates stay as they are): a
+   * save keeps every one of them, tagged, with the same text and pictures, or is refused (409 `project_archived`).
+   * They may move within the note. The editor already keeps them read-only; this is the server's own check.
+   */
+  async function keepFrozen(repo: NotesRepository, noteId: string, ownerId: string, content: EditorDoc) {
+    const stored = await repo.sectionsOf(noteId);
+    if (stored.length === 0) return;
+    const archived = await archivedAmong(repo, ownerId, stored.map((s) => s.projectId));
+    if (archived.size === 0) return;
+    const prints = (sections: { projectId: string | null; content: EditorDoc }[]) =>
+      sections
+        .filter((s) => s.projectId !== null && archived.has(s.projectId))
+        .map((s) => `${s.projectId}:${sectionPrint(s.content)}`)
+        .sort();
+    const before = prints(stored);
+    const after = prints(updatesIn(content));
+    if (before.length !== after.length || before.some((print, i) => print !== after[i])) throw new AppError(409, 'project_archived');
+  }
+
   /**
    * Which projects this note may be tagged with: the owner's active projects, plus archived ones it was already
    * tagged with (an archived project is read-only: it gets no new sections, but keeps the ones it has). Any other
@@ -167,6 +195,7 @@ export function createNotesService(deps: { db: Database; logger: Logger; storage
           return result;
         }
         const content = limitProjects(input.content, await allowedProjects(repo, input.content, noteId, actor.user.id));
+        await keepFrozen(repo, noteId, actor.user.id, content);
         const result = await repo.save(noteId, input.version, { title: input.title, content, text: plainText(content) });
         if (!result) throw new AppError(409, 'version_conflict');
         await repo.replaceSections(noteId, updatesIn(content));
@@ -192,7 +221,11 @@ export function createNotesService(deps: { db: Database; logger: Logger; storage
     async copy(actor, noteId, input) {
       const source = await notes.findOwned(noteId, actor.user.id);
       if (!source) throw new AppError(404, 'not_found');
-      const doc = docOf(source);
+      // An archived project's parts are left out of a copy (owner, 2026-11-25): it is done, there is nothing new to
+      // report on it; the original keeps them, frozen. Their pictures are then not copied either.
+      const original = docOf(source);
+      const tagged = projectSections(original).flatMap((s) => (s.projectId ? [s.projectId] : []));
+      const doc = withoutSections(original, await archivedAmong(notes, actor.user.id, tagged));
       // The copy gets its own image files and rows, so it keeps its pictures when the original is deleted, and its
       // own access check (a teammate reading the copy on a meeting's board). Only the images still in the text.
       const used = attachmentIdsIn(doc);
@@ -212,7 +245,7 @@ export function createNotesService(deps: { db: Database; logger: Logger; storage
         const created = await db.transaction(async (tx) => {
           const repo = createNotesRepository(tx);
           const moved = withAttachments(doc, renamed);
-          // Archived projects get no new sections: their parts are copied untagged, text intact.
+          // Tags that are not mine (any more) are removed, leaving those parts untagged, text intact.
           const content = limitProjects(moved, await allowedProjects(repo, moved, null, actor.user.id));
           await repo.create(actor.user.id, input.title ?? source.title, content, plainText(content), copyId);
           for (const image of copied) await repo.addAttachment(copyId, image);

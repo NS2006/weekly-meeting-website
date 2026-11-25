@@ -71,6 +71,8 @@ export interface NotesRepository {
   projectsOf(noteId: string): Promise<NoteProject[]>;
   /** Project ids the note's sections were tagged with at the last save. */
   taggedProjectIds(noteId: string): Promise<string[]>;
+  /** The note's stored updates (its tagged sections with something written), as last saved. */
+  sectionsOf(noteId: string): Promise<{ projectId: string; content: EditorDoc }[]>;
   /** The owner's projects among `ids`, with their status (others' and missing ids are left out). */
   ownedProjects(ownerId: string, ids: string[]): Promise<{ id: string; status: ProjectStatus }[]>;
   /** A new note; `id` is given when files were already stored under it (a copy's images). */
@@ -215,6 +217,14 @@ export function createNotesRepository(db: Db): NotesRepository {
         noteId,
       ]);
       return rows.map((row) => row.id);
+    },
+
+    async sectionsOf(noteId) {
+      const { rows } = await db.query<{ projectId: string; content: EditorDoc }>(
+        'SELECT project_id AS "projectId", content FROM note_sections WHERE note_id = $1 ORDER BY position',
+        [noteId],
+      );
+      return rows;
     },
 
     async ownedProjects(ownerId, ids) {
