@@ -7,6 +7,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 import { messages } from '../../i18n/messages';
 import { BlueAlert, BlueButton } from '../../components/blue';
+import { BackToTop } from '../../components/BackToTop';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { api, ApiFailure } from '../../services/api';
 import { formatDate, formatDateTime } from '../../utils/dates';
@@ -71,6 +72,8 @@ export function NoteEditor({
   const remove = useDeleteNote();
   const fileInput = useRef<HTMLInputElement>(null);
   const titleInput = useRef<HTMLTextAreaElement>(null);
+  // Back to top focuses the back link, not the title: focusing a text field would open a phone's keyboard.
+  const backLink = useRef<HTMLAnchorElement>(null);
 
   // One autosaver per opened note. Leaving the page sends what is pending first.
   useEffect(() => {
@@ -229,7 +232,7 @@ export function NoteEditor({
     <NoteProjectsProvider noteId={note.id} tagged={note.projects}>
     <div className="note-page">
       <div className="note-page__top">
-        <Link to={back.to} className="back-link">
+        <Link ref={backLink} to={back.to} className="back-link">
           <span className="back-link__arrow" aria-hidden="true">
             ←
           </span>
@@ -334,6 +337,8 @@ export function NoteEditor({
       >
         {t('notes.editor.deleteBody')}
       </ConfirmDialog>
+
+      <BackToTop focusTarget={backLink} />
     </div>
     </NoteProjectsProvider>
   );

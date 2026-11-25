@@ -1,5 +1,25 @@
-import { buildPalette, changedRect, ColorHistogram, delayFromMicroseconds, GifWriter, PaletteMapper, type GifFrame } from './gifEncoder';
-import { ANIMATION_ATTEMPTS, fitWithin, ImageError, MAX_IMAGE_BYTES, nextAnimationAttempt } from './images';
+import {
+  buildPalette,
+  changedRect,
+  closeColours,
+  ColorHistogram,
+  delayFromMicroseconds,
+  GifWriter,
+  nearColours,
+  PaletteMapper,
+  showFrame,
+  type EncodedFrame,
+  type GifFrame,
+} from './gifEncoder';
+import {
+  ANIMATION_ATTEMPTS,
+  ANIMATION_LOSSY_LEVELS,
+  ANIMATION_NOISE_LEVELS,
+  fitWithin,
+  ImageError,
+  MAX_IMAGE_BYTES,
+  nextAnimationAttempt,
+} from './images';
 
 /** Shrinking animations needs the browser's ImageDecoder (Chrome and Edge; Firefox from version 133). */
 export const canShrinkAnimations = () => typeof ImageDecoder !== 'undefined';
@@ -88,12 +108,15 @@ async function encode(
     const transparent = palette.length; // one entry kept for "unchanged" and clear pixels
     const restore = histogram.sawTransparency; // real transparency: whole frames, each cleared after it shows
     const mapper = new PaletteMapper(palette, transparent);
-    const writer = new GifWriter(width, height, palette, loop, transparent, restore);
+    // Recording noise is not a change, and a close colour may be written where it compresses better (images.ts).
+    const near = restore ? undefined : nearColours(palette, ANIMATION_NOISE_LEVELS);
+    const writer = new GifWriter(width, height, palette, loop, transparent, restore, closeColours(palette, ANIMATION_LOSSY_LEVELS));
 
-    // 2. Every frame (or every frameStep-th; the skipped ones' time goes to the frame before).
+    // 2. Every frame (or every frameStep-th; the skipped ones' time goes to the frame before). Each is compressed at
+    // once, so the picture of the screen (`shown`) is what was written; it is written when its time is known.
     const shown = new Uint8Array(width * height).fill(transparent);
     const current = new Uint8Array(width * height);
-    let pending: Omit<GifFrame, 'delayCs'> | null = null;
+    let pending: EncodedFrame | null = null;
     let pendingUs = 0;
     for (let index = 0; index < frameCount; index++) {
       const keep = index % frameStep === 0 || pending === null;
@@ -105,22 +128,25 @@ async function encode(
       mapper.map(context.getImageData(0, 0, width, height).data, current);
       let frame: Omit<GifFrame, 'delayCs'> | null;
       if (restore) {
+        // Whole frames compared exactly (each is cleared after it shows, so nothing builds on the written pixels).
         frame = pending && current.every((v, i) => v === shown[i]) ? null : { left: 0, top: 0, width, height, indices: current.slice() };
         shown.set(current);
       } else {
-        frame = changedRect(shown, current, width, transparent) ?? (pending ? null : { left: 0, top: 0, width: 1, height: 1, indices: new Uint8Array([transparent]) });
+        frame = changedRect(shown, current, width, transparent, near) ?? (pending ? null : { left: 0, top: 0, width: 1, height: 1, indices: new Uint8Array([transparent]) });
       }
       if (frame === null) {
         pendingUs += us; // the same picture: the previous frame shows longer
       } else {
-        if (pending) writer.frame({ ...pending, delayCs: delayFromMicroseconds(pendingUs) });
-        pending = frame;
+        const encoded = writer.encode(frame);
+        if (!restore) showFrame(shown, frame, width, transparent); // lossy compression may have written a close colour
+        if (pending) writer.write(pending, delayFromMicroseconds(pendingUs));
+        pending = encoded;
         pendingUs = us;
       }
       onProgress?.(0.15 + (0.85 * (index + 1)) / frameCount);
       await pace();
     }
-    if (pending) writer.frame({ ...pending, delayCs: delayFromMicroseconds(pendingUs) });
+    if (pending) writer.write(pending, delayFromMicroseconds(pendingUs));
     return writer.finish();
   } finally {
     canvas.width = 0;

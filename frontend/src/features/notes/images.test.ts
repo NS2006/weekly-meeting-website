@@ -105,7 +105,7 @@ describe('isAnimatedImage()', () => {
 
 describe('ANIMATION_ATTEMPTS and nextAnimationAttempt()', () => {
   const screen = { width: 1280, height: 720 };
-  it('keeps the size a note shows images at and skips frames first, then gets smaller', () => {
+  it('keeps the size a note shows images at and skips every second frame first, then gets smaller before skipping more', () => {
     expect(ANIMATION_ATTEMPTS[0]).toEqual({ side: 800, frameStep: 1 });
     for (const [i, a] of ANIMATION_ATTEMPTS.entries()) {
       const before = ANIMATION_ATTEMPTS[i - 1];
@@ -117,9 +117,12 @@ describe('ANIMATION_ATTEMPTS and nextAnimationAttempt()', () => {
     expect(ANIMATION_ATTEMPTS[1]).toEqual({ side: 800, frameStep: 2 });
     expect(nextAnimationAttempt(0, 7 * MB, screen)).toBe(1); // every second frame: about 3.5 MB
     expect(nextAnimationAttempt(0, 12 * MB, screen)).toBe(2); // and 640 px (64% of the pixels): about 3.8 MB
-    expect(nextAnimationAttempt(0, 16 * MB, screen)).toBe(3); // and every third frame: about 3.4 MB
-    // A long recording: 400 px (25% of the pixels) and every fifth frame, about 4 MB.
-    expect(ANIMATION_ATTEMPTS[nextAnimationAttempt(0, 80 * MB, screen)]).toEqual({ side: 400, frameStep: 5 });
+    // Still 15 fps from a 30 fps recording: 560 px (49% of the pixels) and every second frame, about 3.9 MB.
+    expect(ANIMATION_ATTEMPTS[nextAnimationAttempt(0, 16 * MB, screen)]).toEqual({ side: 560, frameStep: 2 });
+    // Then 480 px before every third frame: about 3.6 MB.
+    expect(ANIMATION_ATTEMPTS[nextAnimationAttempt(0, 20 * MB, screen)]).toEqual({ side: 480, frameStep: 2 });
+    // A long recording: 360 px (20% of the pixels) and every fifth frame, about 3.2 MB.
+    expect(ANIMATION_ATTEMPTS[nextAnimationAttempt(0, 80 * MB, screen)]).toEqual({ side: 360, frameStep: 5 });
     expect(nextAnimationAttempt(0, 400 * MB, screen)).toBe(ANIMATION_ATTEMPTS.length - 1);
     expect(nextAnimationAttempt(ANIMATION_ATTEMPTS.length - 1, 6 * MB, screen)).toBe(-1);
   });

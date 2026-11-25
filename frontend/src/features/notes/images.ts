@@ -87,21 +87,38 @@ export function isAnimatedImage(head: Uint8Array, type: string): boolean {
 /**
  * How a GIF (or other animation) over the server's limit is made smaller, tried in order. Size comes first: 800 px
  * is about as wide as a note shows images, so text stays as readable as on screen. Next every second frame is kept
- * (each shows twice as long, so the animation lasts as long as before: a little less smooth, just as sharp). Only
- * then smaller sizes. The last ones are for long recordings (hundreds of frames, tens of MB): fewer frames per second
- * and a phone-screen size, still readable and still moving.
+ * (each shows twice as long, so the animation lasts as long as before): a 30 fps recording plays at 15, still smooth.
+ * Smoothness is kept down to 480 px before every third frame (owner, 2026-11-25: 3–5 fps GIFs looked laggy; at 10 fps
+ * or fewer, scrolling and page slides jump). The last ones are for long recordings (hundreds of frames, tens of MB):
+ * fewer frames per second and a phone-screen size, still readable and still moving.
  */
 export const ANIMATION_ATTEMPTS: readonly { side: number; frameStep: number }[] = [
   { side: 800, frameStep: 1 },
   { side: 800, frameStep: 2 },
   { side: 640, frameStep: 2 },
-  { side: 640, frameStep: 3 },
+  { side: 560, frameStep: 2 },
+  { side: 480, frameStep: 2 },
+  { side: 560, frameStep: 3 },
   { side: 480, frameStep: 3 },
-  { side: 480, frameStep: 4 },
-  { side: 400, frameStep: 5 },
-  { side: 360, frameStep: 6 },
+  { side: 400, frameStep: 3 },
+  { side: 400, frameStep: 4 },
+  { side: 360, frameStep: 5 },
+  { side: 320, frameStep: 6 },
   { side: 320, frameStep: 8 },
 ];
+
+/**
+ * A colour that moved at most this many levels (0–255, per channel) since the last frame counts as unchanged: a screen
+ * recording's frames differ everywhere by a little noise, which costs size and shows nothing (gifEncoder nearColours).
+ */
+export const ANIMATION_NOISE_LEVELS = 6;
+
+/**
+ * Lossy compression: a colour this close (levels per channel) is written where it compresses better (gifEncoder
+ * closeColours). With the noise above, about a quarter to a half smaller on recordings, so more frames fit
+ * (2026-11-25, measured on made-up 20 s phone recordings: 15 fps instead of 10, under the same 5 MB).
+ */
+export const ANIMATION_LOSSY_LEVELS = 6;
 
 /**
  * After attempt `current` came out at `bytes` (too big), the next attempt worth trying: the first whose estimated size

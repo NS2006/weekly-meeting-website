@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { buildPalette, changedRect, ColorHistogram, delayFromMicroseconds, GifWriter, lzwEncode, PaletteMapper } from './gifEncoder';
+import {
+  buildPalette,
+  changedRect,
+  closeColours,
+  ColorHistogram,
+  delayFromMicroseconds,
+  GifWriter,
+  lzwEncode,
+  nearColours,
+  PaletteMapper,
+  showFrame,
+  type Rgb,
+} from './gifEncoder';
 
 /** An LZW decoder written from the GIF specification (as browsers decode), to check the encoder against. */
 function lzwDecode(data: number[], minCodeSize: number): number[] {
@@ -82,6 +94,43 @@ describe('lzwEncode()', () => {
     ];
     for (const [indices, min] of cases) expect(lzwDecode(encoded(indices, min), min)).toEqual(Array.from(indices));
   });
+
+  it('lossy: writes a close colour where it compresses better, never a far one or a transparent pixel', () => {
+    // 64 greys two levels apart, plus the transparent entry 64.
+    const palette: Rgb[] = Array.from({ length: 64 }, (_, i) => [i * 2, i * 2, i * 2]);
+    const close = closeColours(palette, 6);
+    const rnd = random(3);
+    // A noisy grey ramp, as a screen recording's gradient: each pixel a few levels off its neighbours.
+    const source = Uint8Array.from({ length: 30_000 }, (_, i) => (i % 500 === 0 ? 64 : Math.min(63, Math.max(0, Math.floor(i / 600) + Math.floor(rnd() * 5) - 2))));
+    const exact = encoded(source.slice(), 7);
+    const written = source.slice();
+    const bytes: number[] = [];
+    lzwEncode(written, 7, { byte: (b) => bytes.push(b) }, { close, transparent: 64 });
+    const data: number[] = [];
+    for (let at = 1; bytes[at]! > 0; at += bytes[at]! + 1) data.push(...bytes.slice(at + 1, at + 1 + bytes[at]!));
+    // It decodes to exactly what it says it wrote, and is clearly smaller.
+    expect(lzwDecode(data, 7)).toEqual(Array.from(written));
+    expect(data.length).toBeLessThan(exact.length * 0.8);
+    for (let i = 0; i < source.length; i++) {
+      if (source[i] === 64) expect(written[i]).toBe(64); // transparent stays transparent
+      else expect(Math.abs(palette[written[i]!]![0] - palette[source[i]!]![0])).toBeLessThanOrEqual(6);
+    }
+  });
+});
+
+describe('nearColours() and closeColours()', () => {
+  it('pairs colours within the tolerance only, nearest first', () => {
+    const palette: Rgb[] = [
+      [100, 100, 100],
+      [102, 102, 102], // 2 levels: closest
+      [110, 110, 110], // 10 levels: not within 6
+      [100, 100, 106], // 6 levels in blue only: close
+    ];
+    const near = nearColours(palette, 6);
+    expect([near[0 * 256 + 1], near[0 * 256 + 2], near[0 * 256 + 3], near[1 * 256 + 0]]).toEqual([1, 0, 1, 1]);
+    expect(closeColours(palette, 6)[0]).toEqual([1, 3]);
+    expect(closeColours(palette, 6, 1)[0]).toEqual([1]);
+  });
 });
 
 describe('buildPalette() and PaletteMapper', () => {
@@ -133,6 +182,33 @@ describe('changedRect()', () => {
     expect(Array.from(rect?.indices ?? [])).toEqual([2, T, T, 3]);
     expect(shown).toEqual(next);
     expect(changedRect(shown, next.slice(), 4, T)).toBeNull();
+  });
+
+  it('with a tolerance, counts recording noise as unchanged and keeps the old colour on screen', () => {
+    const T = 3;
+    const palette: Rgb[] = [
+      [100, 100, 100],
+      [103, 103, 103], // noise
+      [200, 50, 50], // a real change
+    ];
+    const near = nearColours(palette, 6);
+    const shown = new Uint8Array(9).fill(0); // 3 x 3
+    const next = shown.slice();
+    next[0] = 1; // noise at (0,0)
+    next[4] = 2; // a change at (1,1)
+    next[8] = 1; // noise at (2,2)
+    const rect = changedRect(shown, next, 3, T, near);
+    expect(rect).toMatchObject({ left: 1, top: 1, width: 1, height: 1 });
+    expect(Array.from(rect?.indices ?? [])).toEqual([2]);
+    expect(Array.from(shown)).toEqual([0, 0, 0, 0, 2, 0, 0, 0, 0]); // the noise is not shown
+    // Noise only: nothing to write.
+    expect(changedRect(shown, Uint8Array.from(shown, (v) => (v === 0 ? 1 : v)), 3, T, near)).toBeNull();
+  });
+
+  it('showFrame puts what was written on the screen, leaving transparent pixels as they were', () => {
+    const shown = new Uint8Array(9).fill(5);
+    showFrame(shown, { left: 1, top: 0, width: 2, height: 2, indices: new Uint8Array([7, 9, 9, 8]) }, 3, 9);
+    expect(Array.from(shown)).toEqual([5, 7, 5, 5, 5, 8, 5, 5, 5]);
   });
 
   it('turns frame times into hundredths of a second as browsers do', () => {
@@ -193,6 +269,19 @@ describe('GifWriter', () => {
       { delay: 50, dispose: 1, rect: [0, 0, 4, 3], pixels: new Array(12).fill(0) },
       { delay: 7, dispose: 1, rect: [1, 1, 2, 1], pixels: [1, 2] },
     ]);
+  });
+
+  it('encodes now and writes later, the same bytes as writing at once', () => {
+    const palette: Rgb[] = [
+      [0, 0, 0],
+      [255, 255, 255],
+    ];
+    const frame = { left: 0, top: 0, width: 4, height: 2, indices: new Uint8Array([0, 1, 1, 0, 1, 0, 0, 1]) };
+    const atOnce = new GifWriter(4, 2, palette, 0, 2, false);
+    atOnce.frame({ ...frame, indices: frame.indices.slice(), delayCs: 12 });
+    const later = new GifWriter(4, 2, palette, 0, 2, false);
+    later.write(later.encode({ ...frame, indices: frame.indices.slice() }), 12);
+    expect(Array.from(later.finish())).toEqual(Array.from(atOnce.finish()));
   });
 
   it('plays once without a loop block, and clears each frame when the GIF has real transparency', () => {

@@ -1,7 +1,9 @@
 /**
  * A small animated-GIF encoder, so a big GIF can be made smaller in the browser without a library: one shared
  * palette of up to 255 colours (median cut), frames stored as the rectangle that changed (unchanged pixels
- * transparent), identical frames merged, LZW-compressed. Pure code (no DOM), so it is tested in Node.
+ * transparent; optionally a colour that moved only a little counts as unchanged), identical frames merged,
+ * LZW-compressed (optionally lossy: a close colour is written where it compresses better). Pure code (no DOM), so it
+ * is tested in Node.
  */
 
 /** Pixels of one frame, RGBA (what a canvas's getImageData gives). */
@@ -138,23 +140,66 @@ export class PaletteMapper {
   }
 }
 
+/** How far apart two palette colours look: weighted for the eye, as PaletteMapper matches. */
+const colourDistance = (a: Rgb, b: Rgb) => 2 * (a[0] - b[0]) ** 2 + 4 * (a[1] - b[1]) ** 2 + 3 * (a[2] - b[2]) ** 2;
+/** A tolerance in levels per channel (0–255) as a colourDistance (the weights add up to 9). */
+const withinLevels = (levels: number) => 9 * levels * levels;
+
+/**
+ * Which palette colours look the same within `levels` per channel: `near[a * 256 + b]` is 1 for such a pair. For
+ * changedRect: a screen recording's frames differ everywhere by a little noise, which is not a change worth storing.
+ */
+export function nearColours(palette: readonly Rgb[], levels: number): Uint8Array {
+  const near = new Uint8Array(256 * 256);
+  const limit = withinLevels(levels);
+  for (let a = 0; a < palette.length; a++) {
+    for (let b = 0; b < palette.length; b++) near[a * 256 + b] = colourDistance(palette[a]!, palette[b]!) <= limit ? 1 : 0;
+  }
+  return near;
+}
+
+/** For each palette colour, the others within `levels` per channel, nearest first (at most `cap`): for lossy LZW. */
+export function closeColours(palette: readonly Rgb[], levels: number, cap = 12): number[][] {
+  const limit = withinLevels(levels);
+  return palette.map((colour, a) =>
+    palette
+      .map((other, b) => [b, colourDistance(colour, other)] as const)
+      .filter(([b, d]) => b !== a && d <= limit)
+      .sort((x, y) => x[1] - y[1])
+      .slice(0, cap)
+      .map(([b]) => b),
+  );
+}
+
 /** A frame as written: the changed rectangle of the canvas, its palette indices, how long it shows. */
 export type GifFrame = { left: number; top: number; width: number; height: number; indices: Uint8Array; delayCs: number };
 
 /**
  * The part of `next` that differs from what is on screen (`shown`), with unchanged pixels set to `transparent` so
  * the frame below shows through. Null when nothing changed (the caller lengthens the previous frame instead).
- * `shown` is updated to the new screen.
+ * `shown` is updated to the new screen. With `near` (nearColours), a colour that moved only within the tolerance counts
+ * as unchanged: the screen keeps the old one.
  */
-export function changedRect(shown: Uint8Array, next: Uint8Array, width: number, transparent: number): Omit<GifFrame, 'delayCs'> | null {
+export function changedRect(
+  shown: Uint8Array,
+  next: Uint8Array,
+  width: number,
+  transparent: number,
+  near?: Uint8Array,
+): Omit<GifFrame, 'delayCs'> | null {
   const height = next.length / width;
+  const same = (p: number) => {
+    const a = shown[p]!;
+    const b = next[p]!;
+    return a === b || (near !== undefined && a !== transparent && b !== transparent && near[a * 256 + b] === 1);
+  };
   let left = width;
   let right = -1;
   let top = height;
   let bottom = -1;
   for (let y = 0, p = 0; y < height; y++) {
     for (let x = 0; x < width; x++, p++) {
-      if (shown[p] === next[p]) continue;
+      if (same(p)) continue;
       if (x < left) left = x;
       if (x > right) right = x;
       if (y < top) top = y;
@@ -168,12 +213,24 @@ export function changedRect(shown: Uint8Array, next: Uint8Array, width: number, 
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const p = (top + y) * width + left + x;
-      const value = next[p]!;
-      indices[y * w + x] = shown[p] === value ? transparent : value;
-      shown[p] = value;
+      if (same(p)) indices[y * w + x] = transparent;
+      else {
+        indices[y * w + x] = next[p]!;
+        shown[p] = next[p]!;
+      }
     }
   }
   return { left, top, width: w, height: h, indices };
+}
+
+/** Puts a written frame's pixels on `shown` (transparent ones leave the screen as it was). */
+export function showFrame(shown: Uint8Array, frame: Omit<GifFrame, 'delayCs'>, width: number, transparent: number): void {
+  for (let y = 0; y < frame.height; y++) {
+    for (let x = 0; x < frame.width; x++) {
+      const value = frame.indices[y * frame.width + x]!;
+      if (value !== transparent) shown[(frame.top + y) * width + frame.left + x] = value;
+    }
+  }
 }
 
 /** Browsers show a delay under 2 hundredths of a second as 1/10 s; so does this encoder. */
@@ -209,16 +266,28 @@ class Bytes {
   }
 }
 
+/** A frame already compressed (GifWriter.encode), waiting to be written once its delay is known. */
+export type EncodedFrame = { left: number; top: number; width: number; height: number; data: Uint8Array };
+
 /**
  * Writes a GIF89a: a global palette (padded to a power of two), a loop count (0 = forever, null = play once), and
  * frames. `transparent` is the palette index used for unchanged or clear pixels. `restore` clears each frame after
  * it shows (for GIFs with real transparency, whose frames are written whole); otherwise frames build on each other.
+ * With `close` (closeColours), frames are compressed lossily.
  */
 export class GifWriter {
   private readonly out = new Bytes();
   private readonly bits: number;
 
-  constructor(width: number, height: number, palette: readonly Rgb[], loop: number | null, private readonly transparent: number, private readonly restore: boolean) {
+  constructor(
+    width: number,
+    height: number,
+    palette: readonly Rgb[],
+    loop: number | null,
+    private readonly transparent: number,
+    private readonly restore: boolean,
+    private readonly close?: readonly (readonly number[])[],
+  ) {
     const entries = Math.max(palette.length, transparent + 1, 2);
     this.bits = Math.max(1, Math.ceil(Math.log2(entries)));
     const out = this.out;
@@ -246,13 +315,24 @@ export class GifWriter {
     }
   }
 
-  frame(frame: GifFrame): void {
+  /**
+   * Compresses a frame now (its delay comes later). Lossy compression may write a close colour for some pixels: it
+   * changes `frame.indices` to what was written, for the caller to keep its picture of the screen right (showFrame).
+   */
+  encode(frame: Omit<GifFrame, 'delayCs'>): EncodedFrame {
+    const data = new Bytes();
+    lzwEncode(frame.indices, Math.max(2, this.bits), data, this.close ? { close: this.close, transparent: this.transparent } : undefined);
+    return { left: frame.left, top: frame.top, width: frame.width, height: frame.height, data: data.result() };
+  }
+
+  /** Writes a compressed frame shown for `delayCs` hundredths of a second. */
+  write(frame: EncodedFrame, delayCs: number): void {
     const out = this.out;
     out.byte(0x21);
     out.byte(0xf9);
     out.byte(4);
     out.byte(((this.restore ? 2 : 1) << 2) | 1); // disposal, transparent index in use
-    out.word(frame.delayCs);
+    out.word(delayCs);
     out.byte(this.transparent);
     out.byte(0);
     out.byte(0x2c);
@@ -261,7 +341,11 @@ export class GifWriter {
     out.word(frame.width);
     out.word(frame.height);
     out.byte(0);
-    lzwEncode(frame.indices, Math.max(2, this.bits), out);
+    for (let i = 0; i < frame.data.length; i++) out.byte(frame.data[i]!);
+  }
+
+  frame(frame: GifFrame): void {
+    this.write(this.encode(frame), frame.delayCs);
   }
 
   finish(): Uint8Array<ArrayBuffer> {
@@ -270,8 +354,17 @@ export class GifWriter {
   }
 }
 
-/** GIF's LZW compression, written as 255-byte sub-blocks. The dictionary lives in a small hash table (as in GIFENCOD). */
-export function lzwEncode(indices: Uint8Array, minCodeSize: number, out: { byte(b: number): void }): void {
+/**
+ * GIF's LZW compression, written as 255-byte sub-blocks. The dictionary lives in a small hash table (as in GIFENCOD).
+ * With `lossy`: when a pixel does not extend the current string but a close colour (`lossy.close`) does, that colour is
+ * written instead, and `indices` changed to it (like gifsicle's --lossy). Transparent pixels are never swapped.
+ */
+export function lzwEncode(
+  indices: Uint8Array,
+  minCodeSize: number,
+  out: { byte(b: number): void },
+  lossy?: { close: readonly (readonly number[])[]; transparent: number },
+): void {
   const clear = 1 << minCodeSize;
   const end = clear + 1;
   const HSIZE = 5003;
@@ -299,28 +392,41 @@ export function lzwEncode(indices: Uint8Array, minCodeSize: number, out: { byte(
     }
   };
 
+  // Where the string `prefix` + `k` is in the table, or the empty slot to put it in.
+  const slotOf = (k: number, prefix: number) => {
+    const key = (k << 12) | prefix;
+    let h = (k << 4) ^ prefix; // below 4096, inside the table
+    if (keys[h] === key || keys[h]! < 0) return h;
+    const step = h === 0 ? 1 : HSIZE - h;
+    do {
+      h -= step;
+      if (h < 0) h += HSIZE;
+    } while (keys[h] !== key && keys[h]! >= 0);
+    return h;
+  };
+
   out.byte(minCodeSize);
   emit(clear);
   if (indices.length > 0) {
     let prefix = indices[0]!;
     outer: for (let i = 1; i < indices.length; i++) {
       const k = indices[i]!;
-      const key = (k << 12) | prefix;
-      let h = (k << 4) ^ prefix; // below 4096, inside the table
-      if (keys[h] === key) {
+      const h = slotOf(k, prefix);
+      if (keys[h] === ((k << 12) | prefix)) {
         prefix = codes[h]!;
         continue;
       }
-      if (keys[h]! >= 0) {
-        const step = h === 0 ? 1 : HSIZE - h;
-        do {
-          h -= step;
-          if (h < 0) h += HSIZE;
-          if (keys[h] === key) {
-            prefix = codes[h]!;
+      // Lossy: a close colour that continues the string instead.
+      const alternatives = lossy && k !== lossy.transparent ? lossy.close[k] : undefined;
+      if (alternatives) {
+        for (const other of alternatives) {
+          const slot = slotOf(other, prefix);
+          if (keys[slot] === ((other << 12) | prefix)) {
+            indices[i] = other;
+            prefix = codes[slot]!;
             continue outer;
           }
-        } while (keys[h]! >= 0);
+        }
       }
       emit(prefix);
       if (next === 4096) {
@@ -330,7 +436,7 @@ export function lzwEncode(indices: Uint8Array, minCodeSize: number, out: { byte(
         size = minCodeSize + 1;
       } else {
         if (next >= 1 << size) size++;
-        keys[h] = key;
+        keys[h] = (k << 12) | prefix;
         codes[h] = next++;
       }
       prefix = k;
